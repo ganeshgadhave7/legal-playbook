@@ -12,7 +12,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the configured URL in memory only; do not write secrets into alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", get_settings().async_database_url.replace("%", "%%"))
 target_metadata = None  # Initial migration is explicit SQLAlchemy Core operations.
 
 
