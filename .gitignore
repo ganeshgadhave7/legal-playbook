@@ -1,0 +1,35 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / React
+node_modules/
+dist/
+build/
+.vite/
+
+# Local database/file data
+storage/
+data/
+backend/storage/
+
+*.sqlite3
+
+# Logs and OS/IDE files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
