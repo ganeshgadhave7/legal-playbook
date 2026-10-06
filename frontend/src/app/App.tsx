@@ -545,8 +545,8 @@ function App() {
 
                   <div className="field-label">Intake questions</div>
                   {playbookForm.intake_questions.map((q, index) => (
-                    <div key={index} className="question-card" style={{ border: "1px solid #d1d5db", padding: "1rem", borderRadius: "8px", marginBottom: "1rem" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "1rem", alignItems: "end" }}>
+                    <div key={index} className="question-card">
+                      <div className="question-card-top">
                         <label>
                           Key
                           <input required value={q.key} onChange={(e) => updateQuestion(index, "key", e.target.value)} />
@@ -559,7 +559,7 @@ function App() {
                           Remove
                         </button>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
+                      <div className="question-card-meta">
                         <label>
                           Type
                           <select value={q.type} onChange={(e) => updateQuestion(index, "type", e.target.value)}>
@@ -584,7 +584,7 @@ function App() {
                         )}
                       </div>
                       {q.type === "text" && (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
+                        <div className="question-card-validation">
                           <label>
                             Min length
                             <input
@@ -604,7 +604,7 @@ function App() {
                         </div>
                       )}
                       {q.type === "number" && (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
+                        <div className="question-card-validation">
                           <label>
                             Greater than
                             <input type="number" value={q.validation?.gt ?? ""} onChange={(e) => updateQuestionValidation(index, "gt", e.target.value)} />
