@@ -519,7 +519,7 @@ function App() {
                   <span>ACTION</span>
                 </div>
                 {documents.length === 0 ? (
-                  <div className="empty-row">No source documents yet. Upload the fictional Procurement Policy to begin.</div>
+                  <div className="empty-row">No source documents yet. Upload a fictional bank policy or vendor evidence file to begin.</div>
                 ) : (
                   documents.map((doc) => (
                     <div className="table-row" key={doc.id}>
