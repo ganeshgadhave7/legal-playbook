@@ -2,6 +2,14 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export type SourceDocument = { id: string; title: string; department: string; document_type: string; document_code: string | null; version: string; status: string; original_filename: string; mime_type: string; file_size_bytes: number; sha256: string; fictional: boolean; created_at: string };
 export type SourceDocumentList = { items: SourceDocument[]; limit: number; offset: number; total: number };
+export type SourceDocumentUploadMetadata = {
+  title: string;
+  department: string;
+  document_type: string;
+  document_code: string;
+  version: string;
+  fictional: boolean;
+};
 
 export type IntakeQuestion = {
   key: string;
@@ -89,15 +97,15 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit): Promise<R
 export async function checkHealth(): Promise<{ status: string; database: string }> { return parseResponse(await fetchApi(`${API_BASE}/health`)); }
 export async function listDocuments(): Promise<SourceDocumentList> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/source-documents?limit=100`)); }
 
-export async function uploadDocument(file: File): Promise<SourceDocument> {
+export async function uploadDocument(file: File, metadata: SourceDocumentUploadMetadata): Promise<SourceDocument> {
   const form = new FormData();
   form.append("file", file);
-  form.append("title", "Acme Technologies LLC Procurement Policy");
-  form.append("department", "Procurement");
-  form.append("document_type", "Policy");
-  form.append("document_code", "PROC-POL-001");
-  form.append("version", `upload-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
-  form.append("fictional", "true");
+  form.append("title", metadata.title);
+  form.append("department", metadata.department);
+  form.append("document_type", metadata.document_type);
+  form.append("document_code", metadata.document_code);
+  form.append("version", metadata.version);
+  form.append("fictional", String(metadata.fictional));
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/source-documents`, { method: "POST", body: form }));
 }
 

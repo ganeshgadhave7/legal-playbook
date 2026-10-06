@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   checkHealth,
   createGenericDraft,
@@ -13,6 +13,7 @@ import {
   type IntakeQuestion,
   type Playbook,
   type SourceDocument,
+  type SourceDocumentUploadMetadata,
 } from "../lib/api";
 
 type Tab = "documents" | "intake" | "playbooks";
@@ -28,9 +29,9 @@ const initialPlaybookForm = {
   key: "",
   version: "1",
   title: "",
-  department: "Procurement",
+  department: "Third-Party Risk",
   description: "",
-  prompt_template: `You are an AI assistant for Acme Technologies LLC legal operations.
+  prompt_template: `You are an AI assistant for the Acme Demo Bank third-party technology risk program.
 
 Produce a checklist and risk summary strictly grounded in the approved policy passages provided.
 
@@ -53,6 +54,14 @@ function App() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [uploadMetadata, setUploadMetadata] = useState<SourceDocumentUploadMetadata>({
+    title: "",
+    department: "Third-Party Risk",
+    document_type: "Vendor due diligence",
+    document_code: "",
+    version: "1.0",
+    fictional: true,
+  });
 
   // Intake state
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
@@ -101,16 +110,17 @@ function App() {
     const input = event.currentTarget.elements.namedItem("policy-file") as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) {
-      setError("Choose the fictional Procurement Policy DOCX first.");
+      setError("Choose a fictional vendor-onboarding DOCX to upload.");
       return;
     }
     setBusy(true);
     try {
-      const uploaded = await uploadDocument(file);
+      const uploaded = await uploadDocument(file, uploadMetadata);
       await refreshDocuments();
       setSuccess(`Uploaded ${uploaded.original_filename}; status is ${uploaded.status}.`);
       input.value = "";
       setSelectedFileName("");
+      setUploadMetadata((current) => ({ ...current, title: "", document_code: "" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -382,7 +392,7 @@ function App() {
                 <div>
                   <div className="eyebrow">KNOWLEDGE GOVERNANCE</div>
                   <h1>Source library</h1>
-                  <p>Review fictional policies before they can ground playbook outputs.</p>
+                  <p>Review fictional bank policies and vendor evidence before they can ground playbook outputs.</p>
                 </div>
                 <span className="count-pill">{documents.length} DOCUMENT{documents.length === 1 ? "" : "S"}</span>
               </div>
@@ -390,8 +400,8 @@ function App() {
               <div className="notice-card">
                 <span className="notice-icon">i</span>
                 <div>
-                  <strong>Fictional demonstration workspace</strong>
-                  <p>Only synthetic Acme documents belong here. Approved documents are embedded and become eligible for retrieval.</p>
+                  <strong>Fictional bank vendor-onboarding workspace</strong>
+                  <p>Only synthetic bank policies and vendor evidence belong here. Approved documents are embedded and become eligible for retrieval.</p>
                 </div>
               </div>
 
@@ -402,6 +412,68 @@ function App() {
                 </div>
               </div>
               <form className="upload-card" onSubmit={handleUpload}>
+                <div className="upload-metadata-grid">
+                  <label className="upload-title-field">
+                    Document title
+                    <input
+                      required
+                      maxLength={300}
+                      value={uploadMetadata.title}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, title: e.target.value }))}
+                      placeholder="Third-Party IT Risk Assessment Standard"
+                    />
+                  </label>
+                  <label>
+                    Department
+                    <input
+                      required
+                      maxLength={120}
+                      value={uploadMetadata.department}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, department: e.target.value }))}
+                      placeholder="Third-Party Risk"
+                    />
+                  </label>
+                  <label>
+                    Document type
+                    <input
+                      required
+                      maxLength={120}
+                      value={uploadMetadata.document_type}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, document_type: e.target.value }))}
+                      placeholder="Policy, questionnaire, evidence summary"
+                    />
+                  </label>
+                  <label>
+                    Document code (optional)
+                    <input
+                      maxLength={120}
+                      value={uploadMetadata.document_code}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, document_code: e.target.value }))}
+                      placeholder="TPRM-STD-001"
+                    />
+                  </label>
+                  <label>
+                    Version
+                    <input
+                      required
+                      maxLength={50}
+                      value={uploadMetadata.version}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, version: e.target.value }))}
+                      placeholder="1.0"
+                    />
+                  </label>
+                  <label className="check-row upload-fictional-field">
+                    <input
+                      type="checkbox"
+                      checked={uploadMetadata.fictional}
+                      onChange={(e) => setUploadMetadata((current) => ({ ...current, fictional: e.target.checked }))}
+                    />
+                    <span>
+                      <b>Fictional demo document</b>
+                      <small>Keep enabled for the included sample vendor packet.</small>
+                    </span>
+                  </label>
+                </div>
                 <label className="dropzone">
                   <input
                     id="policy-file"
@@ -411,13 +483,13 @@ function App() {
                     onChange={(e) => setSelectedFileName(e.currentTarget.files?.[0]?.name ?? "")}
                   />
                   <span className="upload-symbol">↑</span>
-                  <strong>{selectedFileName || "Select a fictional policy document"}</strong>
+                  <strong>{selectedFileName || "Select a fictional vendor-onboarding DOCX"}</strong>
                   <span>
-                    {selectedFileName ? "File selected — click Upload document to continue" : "Choose the Acme Procurement Policy DOCX from your computer"}
+                    {selectedFileName ? "File selected — click Upload document to continue" : "Choose a synthetic bank policy or vendor-evidence DOCX"}
                   </span>
                 </label>
                 <div className="upload-actions">
-                  <span>Metadata is pre-filled for the first Procurement Policy demo.</span>
+                  <span>Enter the document's title, type, code, and version before uploading.</span>
                   <button className="button primary" type="submit" disabled={busy}>
                     {busy ? "Uploading…" : "Upload document"}
                   </button>
