@@ -17,6 +17,7 @@ import {
 } from "../lib/api";
 
 type Tab = "documents" | "intake" | "playbooks";
+type UserRole = "reviewer" | "requester";
 
 const emptyQuestion = (): IntakeQuestion => ({
   key: "",
@@ -53,6 +54,11 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [role, setRole] = useState<UserRole>(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("demoRole") : null;
+    return (saved as UserRole) === "reviewer" || saved === "requester" ? (saved as UserRole) : "requester";
+  });
+  const isReviewer = role === "reviewer";
   const [selectedFileName, setSelectedFileName] = useState("");
   const [uploadMetadata, setUploadMetadata] = useState<SourceDocumentUploadMetadata>({
     title: "",
@@ -85,6 +91,12 @@ function App() {
       setSelectedPlaybook(result.items[0]);
     }
   }, [selectedPlaybook]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("demoRole", role);
+    }
+  }, [role]);
 
   useEffect(() => {
     Promise.all([checkHealth(), refreshDocuments(), refreshPlaybooks()])
@@ -374,8 +386,14 @@ function App() {
             {tab === "documents" ? "Source library" : tab === "playbooks" ? "Playbook authoring" : "Run playbook"}
           </div>
           <div className="topbar-right">
-            <span className="avatar">D</span>
-            <span>Demo approver</span>
+            <span className="avatar">{role === "reviewer" ? "R" : "Q"}</span>
+            <label className="role-selector">
+              Role
+              <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+                <option value="requester">Requester</option>
+                <option value="reviewer">Reviewer</option>
+              </select>
+            </label>
           </div>
         </header>
 
@@ -416,6 +434,7 @@ function App() {
                   <p>DOCX only · 10 MB maximum · approval required before indexing</p>
                 </div>
               </div>
+              {isReviewer ? (
               <form className="upload-card" onSubmit={handleUpload}>
                 <div className="upload-metadata-grid">
                   <label className="upload-title-field">
@@ -500,6 +519,15 @@ function App() {
                   </button>
                 </div>
               </form>
+              ) : (
+                <div className="notice-card">
+                  <span className="notice-icon">i</span>
+                  <div>
+                    <strong>Requester view</strong>
+                    <p>Document upload and approval are limited to reviewers. Switch role in the top bar to upload or approve documents.</p>
+                  </div>
+                </div>
+              )}
 
               <div className="section-heading list-heading">
                 <div>
@@ -542,14 +570,18 @@ function App() {
                       </span>
                       <span className="row-actions">
                         {doc.status === "uploaded" || doc.status === "pending_review" ? (
-                          <>
-                            <button className="text-action approve" disabled={busy} onClick={() => handleDecision(doc, "approved")}>
-                              Approve & index
-                            </button>
-                            <button className="text-action reject" disabled={busy} onClick={() => handleDecision(doc, "rejected")}>
-                              Reject
-                            </button>
-                          </>
+                          isReviewer ? (
+                            <>
+                              <button className="text-action approve" disabled={busy} onClick={() => handleDecision(doc, "approved")}>
+                                Approve & index
+                              </button>
+                              <button className="text-action reject" disabled={busy} onClick={() => handleDecision(doc, "rejected")}>
+                                Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span className="muted">Awaiting reviewer</span>
+                          )
                         ) : doc.status === "ready" ? (
                           <span className="ready-label">Available for RAG</span>
                         ) : (
@@ -694,11 +726,11 @@ function App() {
                       )}
                     </div>
                   ))}
-                  <button type="button" className="button secondary" onClick={addQuestion}>
+                  <button type="button" className="button secondary" onClick={addQuestion} disabled={!isReviewer}>
                     Add question
                   </button>
-                  <button className="button primary full-button" type="submit" disabled={busy}>
-                    {busy ? "Saving…" : "Save draft playbook"}
+                  <button className="button primary full-button" type="submit" disabled={busy || !isReviewer}>
+                    {busy ? "Saving…" : isReviewer ? "Save draft playbook" : "Reviewers can save playbooks"}
                   </button>
                 </form>
               )}
@@ -739,9 +771,13 @@ function App() {
                       </span>
                       <span className="row-actions">
                         {p.status === "draft" ? (
-                          <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
-                            Publish
-                          </button>
+                          isReviewer ? (
+                            <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
+                              Publish
+                            </button>
+                          ) : (
+                            <span className="muted">Awaiting reviewer</span>
+                          )
                         ) : (
                           <span className="ready-label">{p.status === "published" ? "Runnable" : "Archived"}</span>
                         )}
