@@ -67,6 +67,7 @@ function App() {
   const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | number | boolean>>({});
   const [draft, setDraft] = useState<GenericDraft | null>(null);
+  const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<Record<string, string | number | boolean> | null>(null);
 
   // Playbook authoring state
   const [showPlaybookForm, setShowPlaybookForm] = useState(false);
@@ -100,6 +101,8 @@ function App() {
       });
       setAnswers(initial);
       setDraft(null);
+      setLastSubmittedAnswers(null);
+      setSuccess("");
     }
   }, [selectedPlaybook]);
 
@@ -161,6 +164,8 @@ function App() {
     try {
       const created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
       setDraft(created);
+      setLastSubmittedAnswers({ ...answers });
+      setSuccess("Draft generated. Review below or change an answer to regenerate.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create draft.");
     } finally {
@@ -805,8 +810,13 @@ function App() {
                           </div>
                         </div>
                         {selectedPlaybook.intake_questions.map((q) => renderQuestionInput(q))}
-                        <button className="button primary full-button" type="submit" disabled={busy}>
-                          {busy ? "Preparing draft…" : "Generate draft"}
+                        <button
+                          className="button primary full-button"
+                          type="submit"
+                          disabled={busy || (draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers))}
+                          title={draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers) ? "Change an answer to regenerate" : ""}
+                        >
+                          {busy ? "Preparing draft…" : draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers) ? "Draft generated — change an answer to regenerate" : "Generate draft"}
                           <span>→</span>
                         </button>
                       </>
