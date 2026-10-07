@@ -153,11 +153,10 @@ def build_query(state: PlaybookDraftState) -> dict:
 
 
 async def retrieve_sources(state: PlaybookDraftState) -> dict:
-    """Embed the query and retrieve relevant passages for the playbook's department."""
+    """Embed the query and retrieve relevant passages from all ready fictional sources."""
     settings = get_settings()
     db = state["db"]
     query = state["query"]
-    department = state["playbook"]["department"]
     estimate = max(1, len(query) // 3)
 
     embedder = VoyageEmbedder()
@@ -184,13 +183,12 @@ async def retrieve_sources(state: PlaybookDraftState) -> dict:
         FROM document_chunks dc
         JOIN source_documents sd ON sd.id = dc.source_document_id
         WHERE sd.status = 'ready' AND sd.fictional = true
-          AND sd.department = :department
         ORDER BY dc.embedding <=> CAST(:embedding AS vector)
         LIMIT 8
         """
     ).bindparams(bindparam("embedding", type_=Vector(settings.voyage_embedding_dimensions)))
 
-    result = await db.execute(statement, {"embedding": vector, "department": department})
+    result = await db.execute(statement, {"embedding": vector})
     passages = [dict(row) for row in result.mappings()]
     passages = deduplicate_passages(passages)
     return {"passages": passages}
