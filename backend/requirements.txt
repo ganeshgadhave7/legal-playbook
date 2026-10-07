@@ -27,3 +27,7 @@ pytest>=8,<9
 
 # File upload support (used in a later upload stage)
 python-multipart>=0.0.9,<1.0
+
+# Authentication
+passlib[bcrypt]>=1.7,<2.0
+python-jose[cryptography]>=3.3,<4.0

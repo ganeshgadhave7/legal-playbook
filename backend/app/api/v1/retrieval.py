@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import get_db_session
+from app.models.user import User
+from app.services.auth import require_user
 from app.services.usage_budget import (
     UsageBudgetExceeded,
     read_usage,
@@ -50,6 +52,7 @@ class RetrievalResponse(BaseModel):
 async def retrieve_passages(
     request: RetrievalRequest,
     db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_user),
 ) -> RetrievalResponse:
     """Embed a query and retrieve only passages from successfully indexed sources."""
     embedder = VoyageEmbedder()

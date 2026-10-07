@@ -7,14 +7,18 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.session import engine
-from app.api.v1 import playbooks_router, retrieval_router, source_documents_router
+from app.api.v1 import auth_router, playbooks_router, retrieval_router, source_documents_router
+from app.db.session import SessionFactory
+from app.services.auth import create_default_admin
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Release the database connection pool during application shutdown."""
+    """Seed default admin if no users exist, then release the pool on shutdown."""
+    async with SessionFactory() as db:
+        await create_default_admin(db)
     yield
     await engine.dispose()
 
@@ -29,6 +33,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(source_documents_router, prefix="/api/v1")
 app.include_router(retrieval_router, prefix="/api/v1")
 app.include_router(playbooks_router, prefix="/api/v1")
@@ -36,7 +41,7 @@ app.include_router(playbooks_router, prefix="/api/v1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )

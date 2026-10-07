@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import get_db_session
+from app.models.user import User
 from app.schemas.source_document import (
     SourceDocumentDecisionRequest,
     SourceDocumentListResponse,
@@ -21,6 +22,7 @@ from app.schemas.source_document import (
 )
 from app.services.chunking import chunk_blocks
 from app.services.docx_extractor import extract_docx_bytes
+from app.services.auth import require_user
 from app.services.local_file_storage import LocalFileStorage
 from app.services.usage_budget import (
     UsageBudgetExceeded,
@@ -278,6 +280,7 @@ async def upload_source_document(
     document_code: str | None = Form(default=None),
     fictional: bool = Form(default=True),
     db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_user),
 ) -> SourceDocumentResponse:
     """Validate, extract, store, and register a DOCX in `uploaded` state."""
     original_filename = Path(file.filename or "upload.docx").name

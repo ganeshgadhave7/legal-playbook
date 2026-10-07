@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     voyage_token_budget: int = 180_000_000
     voyage_tokens_used: int = 0
 
+    # Authentication (override in production)
+    secret_key: str = "change-me-in-production"
+    access_token_expire_minutes: int = 60
+    default_admin_email: str = "admin@acme.demo"
+    default_admin_password: str = "AcmeDemo2025!"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

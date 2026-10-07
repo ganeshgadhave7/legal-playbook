@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.models.user import User
 from app.schemas.playbook import (
     GenericDraftRequest,
     GenericDraftResponse,
@@ -31,8 +32,9 @@ from app.workflows.playbook_draft import (
     run_playbook_draft,
 )
 from app.workflows.vendor_onboarding import DISCLAIMER, run_vendor_onboarding
+from app.services.auth import require_user
 
-router = APIRouter(prefix="/playbooks", tags=["playbooks"])
+router = APIRouter(prefix="/playbooks", tags=["playbooks"], dependencies=[Depends(require_user)])
 
 
 # ---------------------------------------------------------------------------

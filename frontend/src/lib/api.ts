@@ -1,7 +1,19 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 export type SourceDocument = { id: string; title: string; department: string; document_type: string; document_code: string | null; version: string; status: string; original_filename: string; mime_type: string; file_size_bytes: number; sha256: string; fictional: boolean; created_at: string };
 export type SourceDocumentList = { items: SourceDocument[]; limit: number; offset: number; total: number };
+export type UserResponse = { id: string; email: string; is_active: boolean; is_superuser: boolean };
+export type TokenResponse = { access_token: string; token_type: string };
 export type SourceDocumentUploadMetadata = {
   title: string;
   department: string;
@@ -87,6 +99,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function fetchApi(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((value, key) => { headers[key] = value; });
+    } else if (Array.isArray(init.headers)) {
+      init.headers.forEach(([key, value]) => { headers[key] = value; });
+    } else {
+      Object.assign(headers, init.headers);
+    }
+  }
+  init = { ...init, headers };
   try { return await fetch(input, init); }
   catch (error) {
     if (error instanceof TypeError) throw new Error(`Cannot reach API at ${API_BASE}. Check that the backend is running.`);
@@ -95,6 +119,18 @@ async function fetchApi(input: RequestInfo | URL, init?: RequestInit): Promise<R
 }
 
 export async function checkHealth(): Promise<{ status: string; database: string }> { return parseResponse(await fetchApi(`${API_BASE}/health`)); }
+
+export async function login(email: string, password: string): Promise<TokenResponse> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  }));
+}
+
+export async function getMe(): Promise<UserResponse> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/auth/me`));
+}
 export async function listDocuments(): Promise<SourceDocumentList> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/source-documents?limit=100`)); }
 
 export async function uploadDocument(file: File, metadata: SourceDocumentUploadMetadata): Promise<SourceDocument> {
