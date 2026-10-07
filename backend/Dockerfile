@@ -3,10 +3,13 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies for asyncpg and docx extraction
+# Install system dependencies for asyncpg, docx extraction, and cryptography
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    libffi-dev \
+    libssl-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
