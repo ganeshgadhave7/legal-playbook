@@ -421,10 +421,19 @@ async def update_playbook(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Playbook '{key}' not found")
     if row["status"] != "draft":
-        raise HTTPException(
-            status_code=409,
-            detail=f"Only draft playbooks can be edited; current status is '{row['status']}'",
+        # Allow status-only changes (e.g., republish an archived playbook).
+        has_content_changes = (
+            request.title is not None
+            or request.department is not None
+            or request.description is not None
+            or request.intake_questions is not None
+            or request.prompt_template is not None
         )
+        if has_content_changes:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only draft playbooks can be edited; current status is '{row['status']}'",
+            )
 
     updates: dict[str, object] = {}
     if request.title is not None:
