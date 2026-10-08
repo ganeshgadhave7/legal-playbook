@@ -381,6 +381,23 @@ async def _get_latest_playbook_row(key: str, db: AsyncSession) -> dict | None:
     return dict(row) if row else None
 
 
+async def _get_playbook_row(key: str, version: str, db: AsyncSession) -> dict | None:
+    """Return a specific playbook version by key."""
+    result = await db.execute(
+        text(
+            """
+            SELECT id, key, version, title, department, description,
+                   status, intake_questions, prompt_template, created_at, updated_at
+            FROM playbooks
+            WHERE key = :key AND version = :version
+            """
+        ),
+        {"key": key, "version": version},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
 @router.get("/{key}", response_model=PlaybookResponse)
 async def get_playbook(
     key: str,
@@ -478,12 +495,16 @@ async def publish_playbook(
 @router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_playbook(
     key: str,
+    version: str | None = Query(default=None, min_length=1, max_length=50),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
-    """Delete the latest version of a playbook if no cases reference it; otherwise archive it."""
-    row = await _get_latest_playbook_row(key, db)
+    """Delete a playbook version if no cases reference it; otherwise archive it."""
+    if version is not None:
+        row = await _get_playbook_row(key, version, db)
+    else:
+        row = await _get_latest_playbook_row(key, db)
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Playbook '{key}' not found")
+        raise HTTPException(status_code=404, detail=f"Playbook '{key}' v{version or 'latest'} not found")
 
     cases_result = await db.execute(
         text("SELECT count(*) FROM cases WHERE playbook_id = :playbook_id"),
