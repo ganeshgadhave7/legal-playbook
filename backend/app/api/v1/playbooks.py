@@ -280,6 +280,18 @@ async def get_playbook_case(
     return await _build_case_response(db, case_id)
 
 
+@router.delete("/cases/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_playbook_case(
+    case_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Delete a case and all its drafts and citations."""
+    result = await db.execute(text("DELETE FROM cases WHERE id = :id RETURNING id"), {"id": case_id})
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    await db.commit()
+
+
 @router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)
 async def revise_playbook_case(
     case_id: UUID,
