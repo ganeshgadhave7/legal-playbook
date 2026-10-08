@@ -175,7 +175,7 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         text(
             """
             SELECT sd.id AS document_id, sd.title, sd.document_code, sd.version,
-                   dc.section, dc.page_number, dc.id AS chunk_id, dc.similarity
+                   dc.section, dc.page_number, dc.id AS chunk_id, dcit.similarity
             FROM draft_citations dcit
             JOIN document_chunks dc ON dc.id = dcit.chunk_id
             JOIN source_documents sd ON sd.id = dc.source_document_id
