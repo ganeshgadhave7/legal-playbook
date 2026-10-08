@@ -193,7 +193,19 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         ),
         {"draft_id": draft["id"]},
     )
-    sources = [PlaybookSource(**dict(row)) for row in sources_result.mappings()]
+    sources = [
+        PlaybookSource(
+            document_id=str(row["document_id"]),
+            title=row["title"],
+            document_code=row["document_code"],
+            version=row["version"],
+            section=row["section"],
+            page_number=row["page_number"],
+            chunk_id=str(row["chunk_id"]),
+            similarity=float(row["similarity"]),
+        )
+        for row in sources_result.mappings()
+    ]
 
     content = draft["content"] or {}
     return PlaybookCaseResponse(
