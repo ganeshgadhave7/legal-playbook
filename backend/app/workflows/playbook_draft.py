@@ -1,5 +1,6 @@
 """Generic LangGraph workflow for any published playbook."""
 import json
+import re
 from typing import Any, NotRequired, TypedDict
 from uuid import UUID, uuid4
 
@@ -190,6 +191,11 @@ async def retrieve_sources(state: PlaybookDraftState) -> dict:
 
     result = await db.execute(statement, {"embedding": vector})
     passages = [dict(row) for row in result.mappings()]
+    for row in passages:
+        if not row.get("document_code"):
+            match = re.search(r"^\d+_([A-Z0-9_]+)_[A-Z][a-z]", row.get("title", ""))
+            if match:
+                row["document_code"] = match.group(1)
     passages = deduplicate_passages(passages)
     return {"passages": passages}
 

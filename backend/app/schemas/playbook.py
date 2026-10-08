@@ -1,8 +1,9 @@
 """Schemas for the initial Vendor Onboarding Playbook intake and history."""
+import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class VendorOnboardingRequest(BaseModel):
@@ -110,6 +111,18 @@ class IntakeQuestion(BaseModel):
     required: bool = True
     options: list[str] | None = None
     validation: IntakeQuestionValidation | None = None
+
+    @field_validator("key", "label")
+    @classmethod
+    def _strip_whitespace(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("key")
+    @classmethod
+    def _validate_key(cls, v: str) -> str:
+        if not re.match(r"^[a-z0-9_]+$", v):
+            raise ValueError("intake question key must contain only lowercase letters, digits, and underscores")
+        return v
 
 
 class PlaybookCreateRequest(BaseModel):

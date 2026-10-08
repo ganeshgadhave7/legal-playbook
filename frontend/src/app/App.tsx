@@ -311,6 +311,9 @@ function App() {
   function updateQuestion(index: number, field: keyof IntakeQuestion, value: unknown) {
     setPlaybookForm((current) => {
       const questions = [...current.intake_questions];
+      if (field === "key" && typeof value === "string") {
+        value = value.trim().replace(/[^a-z0-9_]/g, "");
+      }
       questions[index] = { ...questions[index], [field]: value } as IntakeQuestion;
       return { ...current, intake_questions: questions };
     });

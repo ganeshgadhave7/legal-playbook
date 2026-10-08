@@ -243,6 +243,35 @@ async def publish_playbook(
     return PlaybookResponse(**dict(result.mappings().one()))
 
 
+@router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_playbook(
+    key: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Delete the latest version of a playbook if no cases reference it; otherwise archive it."""
+    row = await _get_latest_playbook_row(key, db)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Playbook '{key}' not found")
+
+    cases_result = await db.execute(
+        text("SELECT count(*) FROM cases WHERE playbook_id = :playbook_id"),
+        {"playbook_id": row["id"]},
+    )
+    case_count = cases_result.scalar_one()
+
+    if case_count > 0:
+        await db.execute(
+            text("UPDATE playbooks SET status = 'archived', updated_at = now() WHERE id = :id"),
+            {"id": row["id"]},
+        )
+        await db.commit()
+        return None
+
+    await db.execute(text("DELETE FROM playbooks WHERE id = :id"), {"id": row["id"]})
+    await db.commit()
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Vendor Onboarding Playbook endpoints (legacy wrapper around generic engine)
 # ---------------------------------------------------------------------------
