@@ -1,5 +1,7 @@
 """Alembic environment configured from backend environment variables."""
+import os
 from logging.config import fileConfig
+from urllib.parse import urlparse
 
 from alembic import context
 from sqlalchemy import pool
@@ -12,7 +14,24 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the configured URL in memory only; do not write secrets into alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().async_database_url.replace("%", "%%"))
+settings = get_settings()
+raw_url = settings.async_database_url
+if not raw_url:
+    # Fallback to the public URL if the internal reference is empty/unset.
+    raw_url = settings.database_public_url or os.getenv("DATABASE_PUBLIC_URL") or ""
+
+if not raw_url:
+    raise RuntimeError(
+        "DATABASE_URL is empty or not set. "
+        "Set DATABASE_URL=${{Postgres.DATABASE_URL}} in Railway Variables."
+    )
+
+# Sanitized log line for debugging (scheme + netloc, no credentials).
+parsed = urlparse(raw_url)
+safe_netloc = parsed.hostname or "unknown"
+print(f"[alembic] Using database driver={parsed.scheme} host={safe_netloc}", flush=True)
+
+config.set_main_option("sqlalchemy.url", raw_url.replace("%", "%%"))
 target_metadata = None  # Initial migration is explicit SQLAlchemy Core operations.
 
 
