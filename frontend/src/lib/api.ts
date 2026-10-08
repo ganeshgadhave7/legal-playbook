@@ -206,6 +206,10 @@ export async function revisePlaybookCase(caseId: string, answers: Record<string,
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/revisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, revision_note: revisionNote }) }));
 }
 
+export async function updateDraft(caseId: string, draftId: string, updates: Partial<Pick<PlaybookCase, "summary" | "checklist" | "risk_indicators" | "missing_information" | "recommended_next_steps">>): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) }));
+}
+
 // Legacy vendor-onboarding APIs (kept for compatibility)
 export async function listVendorCases(): Promise<VendorCaseList> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases?limit=50`)); }
 export async function getVendorCase(caseId: string): Promise<VendorOnboardingDraft> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases/${caseId}`)); }

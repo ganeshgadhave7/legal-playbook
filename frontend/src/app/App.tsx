@@ -13,6 +13,7 @@ import {
   publishPlaybook,
   revisePlaybookCase,
   setAuthToken,
+  updateDraft,
   updatePlaybook,
   uploadDocument,
   type GenericDraft,
@@ -33,6 +34,32 @@ const emptyQuestion = (): IntakeQuestion => ({
   type: "text",
   required: true,
 });
+
+function EditableList({ items, onChange }: { items: string[]; onChange: (items: string[]) => void }) {
+  return (
+    <div className="editable-list">
+      {items.map((item, i) => (
+        <div className="editable-list-row" key={i}>
+          <input
+            type="text"
+            value={item}
+            onChange={(e) => {
+              const next = [...items];
+              next[i] = e.target.value;
+              onChange(next);
+            }}
+          />
+          <button type="button" className="button secondary" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <button type="button" className="button secondary" onClick={() => onChange([...items, ""])}>
+        Add item
+      </button>
+    </div>
+  );
+}
 
 const initialPlaybookForm = {
   key: "",
@@ -97,6 +124,10 @@ function App() {
   const [cases, setCases] = useState<PlaybookCaseList["items"]>([]);
   const [selectedCase, setSelectedCase] = useState<PlaybookCase | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [draftEditForm, setDraftEditForm] = useState<Partial<Pick<PlaybookCase, "summary" | "checklist" | "risk_indicators" | "missing_information" | "recommended_next_steps">>>({});
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -233,6 +264,20 @@ function App() {
     setBusy(true);
     setError("");
     setDraft(null);
+    setGenerationStatus("Reading intake answers…");
+    const statusInterval = window.setInterval(() => {
+      setGenerationStatus((current) => {
+        const messages = [
+          "Reading intake answers…",
+          "Retrieving relevant policy passages…",
+          "Analyzing gaps against bank standards…",
+          "Building checklist and risk summary…",
+          "Finalizing draft…",
+        ];
+        const idx = messages.indexOf(current ?? "");
+        return messages[Math.min(idx + 1, messages.length - 1)];
+      });
+    }, 1200);
     try {
       let created: GenericDraft;
       if (editingCaseId) {
@@ -248,16 +293,22 @@ function App() {
           created_at: revised.created_at,
         };
         setEditingCaseId(null);
-        await refreshCases();
       } else {
         created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
-        await refreshCases();
       }
-      setDraft(created);
+      await refreshCases();
       setLastSubmittedAnswers({ ...answers });
-      setSuccess("Draft generated. Review below or change an answer to regenerate.");
+      setSuccess("Draft generated successfully.");
+      setGenerationStatus(null);
+      window.clearInterval(statusInterval);
+      // Redirect to drafts tab and select the new case
+      setTab("drafts");
+      const fullCase = await getPlaybookCase(created.case_id);
+      setSelectedCase(fullCase);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create draft.");
+      window.clearInterval(statusInterval);
+      setGenerationStatus(null);
     } finally {
       setBusy(false);
     }
@@ -285,6 +336,69 @@ function App() {
 
   function viewPlaybook(playbook: Playbook) {
     setViewingPlaybook(playbook);
+  }
+
+  function startEditingDraft() {
+    if (!selectedCase) return;
+    setDraftEditForm({
+      summary: selectedCase.summary,
+      checklist: [...selectedCase.checklist],
+      risk_indicators: [...selectedCase.risk_indicators],
+      missing_information: [...selectedCase.missing_information],
+      recommended_next_steps: [...selectedCase.recommended_next_steps],
+    });
+    setIsEditingDraft(true);
+  }
+
+  function cancelEditingDraft() {
+    setIsEditingDraft(false);
+    setDraftEditForm({});
+  }
+
+  function updateDraftField<K extends keyof typeof draftEditForm>(field: K, value: (typeof draftEditForm)[K]) {
+    setDraftEditForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateDraftListField(field: keyof typeof draftEditForm, index: number, value: string) {
+    setDraftEditForm((current) => {
+      const list = [...((current[field] as string[]) || [])];
+      list[index] = value;
+      return { ...current, [field]: list };
+    });
+  }
+
+  function removeDraftListItem(field: keyof typeof draftEditForm, index: number) {
+    setDraftEditForm((current) => {
+      const list = [...((current[field] as string[]) || [])];
+      list.splice(index, 1);
+      return { ...current, [field]: list };
+    });
+  }
+
+  function addDraftListItem(field: keyof typeof draftEditForm) {
+    setDraftEditForm((current) => ({
+      ...current,
+      [field]: [...((current[field] as string[]) || []), ""],
+    }));
+  }
+
+  async function saveDraftChanges() {
+    if (!selectedCase) return;
+    setSavingDraft(true);
+    setError("");
+    setSuccess("");
+    try {
+      const updated = await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftEditForm);
+      setSelectedCase(updated);
+      setIsEditingDraft(false);
+      setDraftEditForm({});
+      setSuccess("Draft updated successfully.");
+      await refreshCases();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update draft.");
+    } finally {
+      setSavingDraft(false);
+    }
   }
 
   function renderQuestionInput(question: IntakeQuestion) {
@@ -1026,14 +1140,19 @@ function App() {
                           </div>
                         </div>
                         {selectedPlaybook.intake_questions.map((q) => renderQuestionInput(q))}
+                        {generationStatus && (
+                          <div className="generation-status">
+                            <span className="spinner" />
+                            <span>{generationStatus}</span>
+                          </div>
+                        )}
                         <button
                           className="button primary full-button"
                           type="submit"
-                          disabled={busy || (draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers))}
-                          title={draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers) ? "Change an answer to regenerate" : ""}
+                          disabled={busy}
                         >
-                          {busy ? "Preparing draft…" : draft !== null && JSON.stringify(lastSubmittedAnswers) === JSON.stringify(answers) ? "Draft generated — change an answer to regenerate" : "Generate draft"}
-                          <span>→</span>
+                          {busy ? "Preparing draft…" : "Generate draft"}
+                          {!busy && <span>→</span>}
                         </button>
                       </>
                     )}
@@ -1179,48 +1298,94 @@ function App() {
                         <span className="draft-state">{selectedCase.draft_status.replaceAll("_", " ").toUpperCase()}</span>
                       </div>
                       <div className="review-actions">
-                        <button className="button primary" onClick={() => loadCaseForEdit(selectedCase)}>
-                          Edit answers
-                        </button>
+                        {!isEditingDraft ? (
+                          <button className="button primary" onClick={startEditingDraft}>
+                            Edit draft
+                          </button>
+                        ) : (
+                          <>
+                            <button className="button secondary" onClick={cancelEditingDraft} disabled={savingDraft}>
+                              Cancel
+                            </button>
+                            <button className="button primary" onClick={saveDraftChanges} disabled={savingDraft}>
+                              {savingDraft ? "Saving…" : "Update draft"}
+                            </button>
+                          </>
+                        )}
                       </div>
                       <div className="disclaimer">{selectedCase.disclaimer}</div>
                       <div className="draft-section">
                         <h3>Summary</h3>
-                        <p>{selectedCase.summary}</p>
+                        {isEditingDraft ? (
+                          <textarea
+                            className="edit-textarea"
+                            rows={4}
+                            value={draftEditForm.summary ?? ""}
+                            onChange={(e) => updateDraftField("summary", e.target.value)}
+                          />
+                        ) : (
+                          <p>{selectedCase.summary}</p>
+                        )}
                       </div>
                       <div className="draft-section">
                         <h3>Checklist</h3>
-                        <ul>
-                          {selectedCase.checklist.map((item, i) => (
-                            <li key={i}>{item}</li>
-                          ))}
-                        </ul>
+                        {isEditingDraft ? (
+                          <EditableList
+                            items={draftEditForm.checklist || []}
+                            onChange={(items) => updateDraftField("checklist", items)}
+                          />
+                        ) : (
+                          <ul>
+                            {selectedCase.checklist.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                       <div className="draft-section">
                         <h3>Risk indicators</h3>
-                        <ul className="risk-list">
-                          {selectedCase.risk_indicators.map((item, i) => (
-                            <li key={i}>{item}</li>
-                          ))}
-                        </ul>
+                        {isEditingDraft ? (
+                          <EditableList
+                            items={draftEditForm.risk_indicators || []}
+                            onChange={(items) => updateDraftField("risk_indicators", items)}
+                          />
+                        ) : (
+                          <ul className="risk-list">
+                            {selectedCase.risk_indicators.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
-                      {selectedCase.missing_information.length > 0 && (
-                        <div className="draft-section">
-                          <h3>Missing information</h3>
+                      <div className="draft-section">
+                        <h3>Missing information</h3>
+                        {isEditingDraft ? (
+                          <EditableList
+                            items={draftEditForm.missing_information || []}
+                            onChange={(items) => updateDraftField("missing_information", items)}
+                          />
+                        ) : (
                           <ul>
                             {selectedCase.missing_information.map((item, i) => (
                               <li key={i}>{item}</li>
                             ))}
                           </ul>
-                        </div>
-                      )}
+                        )}
+                      </div>
                       <div className="draft-section">
                         <h3>Recommended next steps</h3>
-                        <ul>
-                          {selectedCase.recommended_next_steps.map((item, i) => (
-                            <li key={i}>{item}</li>
-                          ))}
-                        </ul>
+                        {isEditingDraft ? (
+                          <EditableList
+                            items={draftEditForm.recommended_next_steps || []}
+                            onChange={(items) => updateDraftField("recommended_next_steps", items)}
+                          />
+                        ) : (
+                          <ul>
+                            {selectedCase.recommended_next_steps.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                       <div className="draft-section sources-section">
                         <h3>

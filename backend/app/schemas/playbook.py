@@ -226,3 +226,11 @@ class PlaybookCaseResponse(BaseModel):
 class GenericRevisionRequest(BaseModel):
     answers: dict[str, str | int | float | bool | None]
     revision_note: str | None = Field(default=None, max_length=2000)
+
+
+class DraftContentUpdate(BaseModel):
+    summary: str | None = Field(default=None, max_length=5000)
+    checklist: list[str] | None = None
+    risk_indicators: list[str] | None = None
+    missing_information: list[str] | None = None
+    recommended_next_steps: list[str] | None = None

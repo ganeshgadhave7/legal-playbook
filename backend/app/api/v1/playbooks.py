@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.models.user import User
 from app.schemas.playbook import (
+    DraftContentUpdate,
     GenericDraftRequest,
     GenericDraftResponse,
     GenericRevisionRequest,
@@ -290,6 +291,42 @@ async def delete_playbook_case(
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Case not found")
     await db.commit()
+
+
+@router.put("/cases/{case_id}/drafts/{draft_id}", response_model=PlaybookCaseResponse)
+async def update_draft_content(
+    case_id: UUID,
+    draft_id: UUID,
+    request: DraftContentUpdate,
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Update the editable content of a draft."""
+    result = await db.execute(
+        text("SELECT id, content FROM drafts WHERE id = :draft_id AND case_id = :case_id"),
+        {"draft_id": draft_id, "case_id": case_id},
+    )
+    row = result.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    content = dict(row["content"]) if row["content"] else {}
+    if request.summary is not None:
+        content["summary"] = request.summary
+    if request.checklist is not None:
+        content["checklist"] = request.checklist
+    if request.risk_indicators is not None:
+        content["risk_indicators"] = request.risk_indicators
+    if request.missing_information is not None:
+        content["missing_information"] = request.missing_information
+    if request.recommended_next_steps is not None:
+        content["recommended_next_steps"] = request.recommended_next_steps
+
+    await db.execute(
+        text("UPDATE drafts SET content = CAST(:content AS jsonb), updated_at = now() WHERE id = :draft_id"),
+        {"draft_id": draft_id, "content": json.dumps(content)},
+    )
+    await db.commit()
+    return await _build_case_response(db, case_id, draft_id)
 
 
 @router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)
