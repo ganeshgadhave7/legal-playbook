@@ -84,6 +84,8 @@ function App() {
   // Playbook authoring state
   const [showPlaybookForm, setShowPlaybookForm] = useState(false);
   const [playbookForm, setPlaybookForm] = useState(initialPlaybookForm);
+  const [editingPlaybookId, setEditingPlaybookId] = useState<string | null>(null);
+  const [editingPlaybookKey, setEditingPlaybookKey] = useState<string | null>(null);
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -348,6 +350,29 @@ function App() {
     }));
   }
 
+  function handleEditPlaybook(playbook: Playbook) {
+    setPlaybookForm({
+      key: playbook.key,
+      version: playbook.version,
+      title: playbook.title,
+      department: playbook.department,
+      description: playbook.description ?? "",
+      prompt_template: playbook.prompt_template,
+      intake_questions: playbook.intake_questions.length > 0 ? playbook.intake_questions : [emptyQuestion()],
+    });
+    setEditingPlaybookId(playbook.id);
+    setEditingPlaybookKey(playbook.key);
+    setShowPlaybookForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleNewPlaybook() {
+    setPlaybookForm(initialPlaybookForm);
+    setEditingPlaybookId(null);
+    setEditingPlaybookKey(null);
+    setShowPlaybookForm((s) => !s);
+  }
+
   async function handleSavePlaybook(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -358,22 +383,35 @@ function App() {
         ...q,
         options: q.type === "select" ? (q.options || []).filter((o) => o.trim() !== "") : undefined,
       }));
-      await createPlaybook({
-        key: playbookForm.key,
-        version: playbookForm.version,
-        title: playbookForm.title,
-        department: playbookForm.department,
-        description: playbookForm.description || null,
-        intake_questions: cleanedQuestions,
-        prompt_template: playbookForm.prompt_template,
-        status: "draft",
-      });
-      setSuccess("Playbook created as draft.");
+      if (editingPlaybookKey) {
+        await updatePlaybook(editingPlaybookKey, {
+          title: playbookForm.title,
+          department: playbookForm.department,
+          description: playbookForm.description || null,
+          intake_questions: cleanedQuestions,
+          prompt_template: playbookForm.prompt_template,
+        });
+        setSuccess("Playbook updated.");
+      } else {
+        await createPlaybook({
+          key: playbookForm.key,
+          version: playbookForm.version,
+          title: playbookForm.title,
+          department: playbookForm.department,
+          description: playbookForm.description || null,
+          intake_questions: cleanedQuestions,
+          prompt_template: playbookForm.prompt_template,
+          status: "draft",
+        });
+        setSuccess("Playbook created as draft.");
+      }
       setPlaybookForm(initialPlaybookForm);
+      setEditingPlaybookId(null);
+      setEditingPlaybookKey(null);
       setShowPlaybookForm(false);
       await refreshPlaybooks();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create playbook.");
+      setError(e instanceof Error ? e.message : "Could not save playbook.");
     } finally {
       setBusy(false);
     }
@@ -680,7 +718,7 @@ function App() {
                   <h1>Playbooks</h1>
                   <p>Create and publish reusable playbook definitions.</p>
                 </div>
-                <button className="button primary" onClick={() => setShowPlaybookForm((s) => !s)} disabled={busy}>
+                <button className="button primary" onClick={handleNewPlaybook} disabled={busy}>
                   {showPlaybookForm ? "Cancel" : "New playbook"}
                 </button>
               </div>
@@ -690,7 +728,7 @@ function App() {
                   <div className="form-title">
                     <span className="step-number">01</span>
                     <div>
-                      <h2>Create playbook</h2>
+                      <h2>{editingPlaybookId ? "Edit playbook" : "Create playbook"}</h2>
                       <p>Define the intake questions and LLM prompt template.</p>
                     </div>
                   </div>
@@ -702,11 +740,17 @@ function App() {
                       value={playbookForm.key}
                       onChange={(e) => updatePlaybookField("key", e.target.value)}
                       placeholder="invoice_review"
+                      disabled={!!editingPlaybookId}
                     />
                   </label>
                   <label>
                     Version
-                    <input required value={playbookForm.version} onChange={(e) => updatePlaybookField("version", e.target.value)} />
+                    <input
+                      required
+                      value={playbookForm.version}
+                      onChange={(e) => updatePlaybookField("version", e.target.value)}
+                      disabled={!!editingPlaybookId}
+                    />
                   </label>
                   <label>
                     Title
@@ -807,7 +851,7 @@ function App() {
                     Add question
                   </button>
                   <button className="button primary full-button" type="submit" disabled={busy}>
-                    {busy ? "Saving…" : "Save draft playbook"}
+                    {busy ? "Saving…" : editingPlaybookId ? "Update draft playbook" : "Save draft playbook"}
                   </button>
                 </form>
               )}
@@ -848,9 +892,14 @@ function App() {
                       </span>
                       <span className="row-actions">
                         {p.status === "draft" ? (
-                          <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
-                            Publish
-                          </button>
+                          <>
+                            <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
+                              Publish
+                            </button>
+                            <button className="text-action" disabled={busy} onClick={() => handleEditPlaybook(p)}>
+                              Edit
+                            </button>
+                          </>
                         ) : (
                           <span className="ready-label">{p.status === "published" ? "Runnable" : "Archived"}</span>
                         )}
