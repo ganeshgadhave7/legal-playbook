@@ -12,6 +12,10 @@ from app.models.user import User
 from app.schemas.playbook import (
     GenericDraftRequest,
     GenericDraftResponse,
+    GenericRevisionRequest,
+    PlaybookCaseListItem,
+    PlaybookCaseListResponse,
+    PlaybookCaseResponse,
     PlaybookCreateRequest,
     PlaybookListResponse,
     PlaybookResponse,
@@ -556,3 +560,200 @@ async def draft_generic_playbook(
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Could not prepare playbook draft") from exc
+
+
+# ---------------------------------------------------------------------------
+# Generic playbook cases / drafts
+# ---------------------------------------------------------------------------
+
+async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID | None = None) -> PlaybookCaseResponse:
+    """Fetch a case and its latest draft, including citations, and return a response."""
+    case_result = await db.execute(
+        text(
+            """
+            SELECT c.id, c.playbook_key, c.playbook_version, c.status AS case_status,
+                   c.intake_answers, c.created_at, p.title AS playbook_title
+            FROM cases c
+            LEFT JOIN playbooks p ON p.id = c.playbook_id
+            WHERE c.id = :case_id
+            """
+        ),
+        {"case_id": case_id},
+    )
+    case = case_result.mappings().first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    draft_filter = "d.id = :draft_id" if draft_id else "d.version = (SELECT max(version) FROM drafts WHERE case_id = c.id)"
+    draft_result = await db.execute(
+        text(
+            f"""
+            SELECT d.id, d.version, d.status AS draft_status, d.content, d.disclaimer
+            FROM drafts d
+            WHERE d.case_id = :case_id AND {draft_filter}
+            """
+        ),
+        {"case_id": case_id, "draft_id": draft_id} if draft_id else {"case_id": case_id},
+    )
+    draft = draft_result.mappings().first()
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    sources_result = await db.execute(
+        text(
+            """
+            SELECT sd.id AS document_id, sd.title, sd.document_code, sd.version,
+                   dc.section, dc.page_number, dc.id AS chunk_id, dc.similarity
+            FROM draft_citations dcit
+            JOIN document_chunks dc ON dc.id = dcit.chunk_id
+            JOIN source_documents sd ON sd.id = dc.source_document_id
+            WHERE dcit.draft_id = :draft_id
+            ORDER BY dcit.rank
+            """
+        ),
+        {"draft_id": draft["id"]},
+    )
+    sources = [PlaybookSource(**dict(row)) for row in sources_result.mappings()]
+
+    content = draft["content"] or {}
+    return PlaybookCaseResponse(
+        case_id=str(case["id"]),
+        draft_id=str(draft["id"]),
+        playbook_key=case["playbook_key"],
+        playbook_version=case["playbook_version"],
+        playbook_title=case["playbook_title"] or case["playbook_key"],
+        case_status=case["case_status"],
+        draft_status=draft["draft_status"],
+        intake_answers=case["intake_answers"],
+        created_at=case["created_at"],
+        disclaimer=draft["disclaimer"],
+        summary=content.get("summary", ""),
+        checklist=content.get("checklist", []),
+        risk_indicators=content.get("risk_indicators", []),
+        missing_information=content.get("missing_information", []),
+        recommended_next_steps=content.get("recommended_next_steps", []),
+        sources=sources,
+    )
+
+
+@router.get("/cases", response_model=PlaybookCaseListResponse)
+async def list_playbook_cases(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseListResponse:
+    """List all generic playbook cases with their latest draft status."""
+    count_result = await db.execute(text("SELECT count(*) FROM cases"))
+    total = count_result.scalar_one()
+
+    result = await db.execute(
+        text(
+            """
+            SELECT c.id AS case_id, c.playbook_key, c.playbook_version,
+                   c.status AS case_status, c.created_at, p.title AS playbook_title,
+                   d.id AS draft_id, d.status AS draft_status
+            FROM cases c
+            LEFT JOIN playbooks p ON p.id = c.playbook_id
+            LEFT JOIN LATERAL (
+                SELECT id, status FROM drafts WHERE case_id = c.id ORDER BY version DESC LIMIT 1
+            ) d ON true
+            ORDER BY c.created_at DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"limit": limit, "offset": offset},
+    )
+    items = [
+        PlaybookCaseListItem(
+            case_id=str(row["case_id"]),
+            draft_id=str(row["draft_id"]),
+            playbook_key=row["playbook_key"],
+            playbook_version=row["playbook_version"],
+            playbook_title=row["playbook_title"] or row["playbook_key"],
+            case_status=row["case_status"],
+            draft_status=row["draft_status"],
+            created_at=row["created_at"],
+        )
+        for row in result.mappings()
+    ]
+    return PlaybookCaseListResponse(items=items, total=total)
+
+
+@router.get("/cases/{case_id}", response_model=PlaybookCaseResponse)
+async def get_playbook_case(
+    case_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Get a generic playbook case and its latest draft."""
+    return await _build_case_response(db, case_id)
+
+
+@router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)
+async def revise_playbook_case(
+    case_id: UUID,
+    request: GenericRevisionRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Create a new draft version for a case with updated intake answers."""
+    case_result = await db.execute(
+        text("SELECT id, playbook_key, playbook_version, playbook_id, status FROM cases WHERE id = :case_id FOR UPDATE"),
+        {"case_id": case_id},
+    )
+    case = case_result.mappings().first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    latest = await db.execute(
+        text("SELECT id, version FROM drafts WHERE case_id = :case_id ORDER BY version DESC LIMIT 1 FOR UPDATE"),
+        {"case_id": case_id},
+    )
+    latest_draft = latest.mappings().first()
+
+    try:
+        new_response = await run_playbook_draft(
+            case["playbook_key"],
+            case["playbook_version"],
+            request.answers,
+            db,
+        )
+    except PlaybookNotFound as exc:
+        await db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlaybookIntakeValidationError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except UsageBudgetExceeded as exc:
+        await db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except EmbeddingError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=502, detail="Could not embed revised intake") from exc
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Could not create revised draft") from exc
+
+    # run_playbook_draft inserts a new case+draft; we want it as a revision of the existing case.
+    # Merge the new draft into the existing case.
+    new_case_id = UUID(new_response.case_id)
+    new_draft_id = UUID(new_response.draft_id)
+
+    await db.execute(
+        text("UPDATE drafts SET case_id = :case_id, version = :version WHERE id = :draft_id"),
+        {"case_id": case_id, "draft_id": new_draft_id, "version": int(latest_draft["version"]) + 1 if latest_draft else 1},
+    )
+    await db.execute(
+        text("DELETE FROM cases WHERE id = :id"),
+        {"id": new_case_id},
+    )
+    await db.execute(
+        text("UPDATE cases SET status = 'draft_pending_review', intake_answers = CAST(:answers AS jsonb), updated_at = now() WHERE id = :case_id"),
+        {"case_id": case_id, "answers": json.dumps(request.answers, default=str)},
+    )
+    if request.revision_note:
+        await db.execute(
+            text("INSERT INTO draft_reviews (id, draft_id, reviewer, decision, reason) VALUES (:id, :draft_id, :reviewer, 'changes_requested', :reason)"),
+            {"id": uuid4(), "draft_id": new_draft_id, "reviewer": "requester-revision", "reason": request.revision_note.strip()},
+        )
+    await db.commit()
+
+    return await _build_case_response(db, case_id, new_draft_id)

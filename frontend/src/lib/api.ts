@@ -173,6 +173,39 @@ export async function createGenericDraft(playbookKey: string, playbookVersion: s
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playbook_key: playbookKey, playbook_version: playbookVersion, answers }) }));
 }
 
+export type PlaybookCase = {
+  case_id: string;
+  draft_id: string;
+  playbook_key: string;
+  playbook_version: string;
+  playbook_title: string;
+  case_status: string;
+  draft_status: string;
+  intake_answers: Record<string, string | number | boolean | null>;
+  created_at: string;
+  disclaimer: string;
+  summary: string;
+  checklist: string[];
+  risk_indicators: string[];
+  missing_information: string[];
+  recommended_next_steps: string[];
+  sources: PlaybookSource[];
+};
+
+export type PlaybookCaseList = { items: Array<{ case_id: string; draft_id: string; playbook_key: string; playbook_version: string; playbook_title: string; case_status: string; draft_status: string; created_at: string }>; total: number };
+
+export async function listPlaybookCases(): Promise<PlaybookCaseList> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases?limit=50`));
+}
+
+export async function getPlaybookCase(caseId: string): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}`));
+}
+
+export async function revisePlaybookCase(caseId: string, answers: Record<string, string | number | boolean>, revisionNote = ""): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/revisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, revision_note: revisionNote }) }));
+}
+
 // Legacy vendor-onboarding APIs (kept for compatibility)
 export async function listVendorCases(): Promise<VendorCaseList> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases?limit=50`)); }
 export async function getVendorCase(caseId: string): Promise<VendorOnboardingDraft> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases/${caseId}`)); }

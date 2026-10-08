@@ -186,3 +186,43 @@ class GenericDraftResponse(BaseModel):
     missing_information: list[str]
     recommended_next_steps: list[str]
     sources: list[PlaybookSource]
+
+
+class PlaybookCaseListItem(BaseModel):
+    case_id: str
+    draft_id: str
+    playbook_key: str
+    playbook_version: str
+    playbook_title: str
+    case_status: str
+    draft_status: str
+    created_at: datetime
+
+
+class PlaybookCaseListResponse(BaseModel):
+    items: list[PlaybookCaseListItem]
+    total: int
+
+
+class PlaybookCaseResponse(BaseModel):
+    case_id: str
+    draft_id: str
+    playbook_key: str
+    playbook_version: str
+    playbook_title: str
+    case_status: str
+    draft_status: str
+    intake_answers: dict[str, str | int | float | bool | None]
+    created_at: datetime
+    disclaimer: str
+    summary: str
+    checklist: list[str]
+    risk_indicators: list[str]
+    missing_information: list[str]
+    recommended_next_steps: list[str]
+    sources: list[PlaybookSource]
+
+
+class GenericRevisionRequest(BaseModel):
+    answers: dict[str, str | int | float | bool | None]
+    revision_note: str | None = Field(default=None, max_length=2000)

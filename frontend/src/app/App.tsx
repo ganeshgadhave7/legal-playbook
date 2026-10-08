@@ -5,22 +5,27 @@ import {
   createPlaybook,
   decideDocument,
   getMe,
+  getPlaybookCase,
   listDocuments,
+  listPlaybookCases,
   listPlaybooks,
   login,
   publishPlaybook,
+  revisePlaybookCase,
   setAuthToken,
   updatePlaybook,
   uploadDocument,
   type GenericDraft,
   type IntakeQuestion,
   type Playbook,
+  type PlaybookCase,
+  type PlaybookCaseList,
   type SourceDocument,
   type SourceDocumentUploadMetadata,
   type UserResponse,
 } from "../lib/api";
 
-type Tab = "documents" | "intake" | "playbooks";
+type Tab = "documents" | "intake" | "playbooks" | "drafts";
 
 const emptyQuestion = (): IntakeQuestion => ({
   key: "",
@@ -86,6 +91,12 @@ function App() {
   const [playbookForm, setPlaybookForm] = useState(initialPlaybookForm);
   const [editingPlaybookId, setEditingPlaybookId] = useState<string | null>(null);
   const [editingPlaybookKey, setEditingPlaybookKey] = useState<string | null>(null);
+  const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
+
+  // Draft cases state
+  const [cases, setCases] = useState<PlaybookCaseList["items"]>([]);
+  const [selectedCase, setSelectedCase] = useState<PlaybookCase | null>(null);
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -99,6 +110,11 @@ function App() {
       setSelectedPlaybook(result.items[0]);
     }
   }, [selectedPlaybook]);
+
+  const refreshCases = useCallback(async () => {
+    const result = await listPlaybookCases();
+    setCases(result.items);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -118,7 +134,7 @@ function App() {
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([checkHealth(), refreshDocuments(), refreshPlaybooks()])
+    Promise.all([checkHealth(), refreshDocuments(), refreshPlaybooks(), refreshCases()])
       .then(([health]) => setApiState(health.database === "connected" ? "connected" : "unavailable"))
       .catch(() => setApiState("unavailable"));
   }, [refreshDocuments, refreshPlaybooks]);
@@ -218,7 +234,25 @@ function App() {
     setError("");
     setDraft(null);
     try {
-      const created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
+      let created: GenericDraft;
+      if (editingCaseId) {
+        const revised = await revisePlaybookCase(editingCaseId, answers, "Intake answers updated by user");
+        created = {
+          ...revised,
+          case_id: revised.case_id,
+          draft_id: revised.draft_id,
+          playbook_key: revised.playbook_key,
+          playbook_version: revised.playbook_version,
+          case_status: revised.case_status,
+          draft_status: revised.draft_status,
+          created_at: revised.created_at,
+        };
+        setEditingCaseId(null);
+        await refreshCases();
+      } else {
+        created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
+        await refreshCases();
+      }
       setDraft(created);
       setLastSubmittedAnswers({ ...answers });
       setSuccess("Draft generated. Review below or change an answer to regenerate.");
@@ -231,6 +265,26 @@ function App() {
 
   function updateAnswer(key: string, value: string | number | boolean) {
     setAnswers((current) => ({ ...current, [key]: value }));
+  }
+
+  async function loadCaseForEdit(caseItem: PlaybookCase) {
+    const playbook = playbooks.find((p) => p.key === caseItem.playbook_key && p.version === caseItem.playbook_version);
+    if (!playbook) {
+      setError("Playbook for this case is not available.");
+      return;
+    }
+    const fullCase = await getPlaybookCase(caseItem.case_id);
+    setSelectedPlaybook(playbook);
+    setAnswers(fullCase.intake_answers as Record<string, string | number | boolean>);
+    setLastSubmittedAnswers(null);
+    setEditingCaseId(fullCase.case_id);
+    setDraft(null);
+    setTab("intake");
+    setSuccess("Answers loaded. Edit them and click Generate draft to create a revision.");
+  }
+
+  function viewPlaybook(playbook: Playbook) {
+    setViewingPlaybook(playbook);
   }
 
   function renderQuestionInput(question: IntakeQuestion) {
@@ -495,6 +549,9 @@ function App() {
         </button>
         <button className={`nav-item ${tab === "intake" ? "active" : ""}`} onClick={() => setTab("intake")}>
           <span className="nav-icon">✳</span> Run playbook
+        </button>
+        <button className={`nav-item ${tab === "drafts" ? "active" : ""}`} onClick={() => setTab("drafts")}>
+          <span className="nav-icon">🗀</span> Drafts
         </button>
         <div className="sidebar-bottom">
           <span className="fictional-chip">FICTIONAL DEMO</span>
@@ -891,7 +948,10 @@ function App() {
                         <b className={`status-badge ${p.status}`}>{p.status}</b>
                       </span>
                       <span className="row-actions">
-                        {p.status === "draft" ? (
+                        <button className="text-action" disabled={busy} onClick={() => viewPlaybook(p)}>
+                          View
+                        </button>
+                        {p.status === "draft" && (
                           <>
                             <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
                               Publish
@@ -900,8 +960,6 @@ function App() {
                               Edit
                             </button>
                           </>
-                        ) : (
-                          <span className="ready-label">{p.status === "published" ? "Runnable" : "Archived"}</span>
                         )}
                       </span>
                     </div>
@@ -1064,11 +1122,171 @@ function App() {
             </>
           )}
 
+          {tab === "drafts" && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">DRAFT HISTORY</div>
+                  <h1>Drafts</h1>
+                  <p>View and revise previously generated drafts.</p>
+                </div>
+              </div>
+              <div className="case-workspace">
+                <div className="saved-cases-card">
+                  <div className="saved-cases-heading">
+                    <div>
+                      <h2>Saved drafts</h2>
+                      <p>{cases.length} total</p>
+                    </div>
+                  </div>
+                  {cases.length === 0 ? (
+                    <div className="cases-empty">No drafts yet. Run a playbook to create one.</div>
+                  ) : (
+                    cases.map((c) => (
+                      <button
+                        key={c.case_id}
+                        className={`saved-case ${selectedCase?.case_id === c.case_id ? "selected" : ""}`}
+                        onClick={async () => {
+                          try {
+                            const full = await getPlaybookCase(c.case_id);
+                            setSelectedCase(full);
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : "Could not load draft.");
+                          }
+                        }}
+                      >
+                        <strong>{c.playbook_title}</strong>
+                        <span>{c.case_status.replaceAll("_", " ")}</span>
+                        <small>{new Date(c.created_at).toLocaleString()}</small>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="draft-column">
+                  {!selectedCase ? (
+                    <div className="placeholder-card">
+                      <div className="placeholder-art">✳</div>
+                      <h2>Select a draft to view</h2>
+                      <p>Choose a saved draft from the list to review or edit its intake answers.</p>
+                    </div>
+                  ) : (
+                    <div className="draft-card">
+                      <div className="draft-header">
+                        <div>
+                          <div className="eyebrow">SAVED DRAFT</div>
+                          <h2>{selectedCase.playbook_title}</h2>
+                        </div>
+                        <span className="draft-state">{selectedCase.draft_status.replaceAll("_", " ").toUpperCase()}</span>
+                      </div>
+                      <div className="review-actions">
+                        <button className="button primary" onClick={() => loadCaseForEdit(selectedCase)}>
+                          Edit answers
+                        </button>
+                      </div>
+                      <div className="disclaimer">{selectedCase.disclaimer}</div>
+                      <div className="draft-section">
+                        <h3>Summary</h3>
+                        <p>{selectedCase.summary}</p>
+                      </div>
+                      <div className="draft-section">
+                        <h3>Checklist</h3>
+                        <ul>
+                          {selectedCase.checklist.map((item, i) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="draft-section">
+                        <h3>Risk indicators</h3>
+                        <ul className="risk-list">
+                          {selectedCase.risk_indicators.map((item, i) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      {selectedCase.missing_information.length > 0 && (
+                        <div className="draft-section">
+                          <h3>Missing information</h3>
+                          <ul>
+                            {selectedCase.missing_information.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="draft-section">
+                        <h3>Recommended next steps</h3>
+                        <ul>
+                          {selectedCase.recommended_next_steps.map((item, i) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="draft-section sources-section">
+                        <h3>
+                          Retrieved sources <span>{selectedCase.sources.length}</span>
+                        </h3>
+                        {selectedCase.sources.map((source) => (
+                          <div className="source-citation" key={source.chunk_id}>
+                            <span className="citation-mark">§</span>
+                            <div>
+                              <strong>{source.title}</strong>
+                              <small>
+                                {source.document_code ?? "Source"} · v{source.version}
+                                {source.section ? ` · ${source.section}` : ""}
+                              </small>
+                            </div>
+                            <span className="similarity">{Math.round(source.similarity * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
           <footer className="page-footer">
             <span>ACME LEGAL PLAYBOOK ASSISTANT</span>
             <span>Fictional portfolio demonstration · Not legal advice</span>
           </footer>
         </section>
+
+        {viewingPlaybook && (
+          <div className="modal-overlay" onClick={() => setViewingPlaybook(null)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <div className="eyebrow">PLAYBOOK DETAILS</div>
+                  <h2>{viewingPlaybook.title}</h2>
+                </div>
+                <button className="button secondary" onClick={() => setViewingPlaybook(null)}>
+                  Close
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="modal-meta">
+                  <b>{viewingPlaybook.key}</b> · v{viewingPlaybook.version} · {viewingPlaybook.department} ·{" "}
+                  <span className={`status-badge ${viewingPlaybook.status}`}>{viewingPlaybook.status}</span>
+                </p>
+                {viewingPlaybook.description && <p>{viewingPlaybook.description}</p>}
+                <h3>Intake questions</h3>
+                <ul className="modal-list">
+                  {viewingPlaybook.intake_questions.map((q) => (
+                    <li key={q.key}>
+                      <strong>{q.label}</strong> <small>({q.key})</small>
+                      <br />
+                      <small>Type: {q.type} · {q.required ? "Required" : "Optional"}</small>
+                    </li>
+                  ))}
+                </ul>
+                <h3>Prompt template</h3>
+                <pre className="modal-pre">{viewingPlaybook.prompt_template}</pre>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
