@@ -19,6 +19,7 @@ from app.schemas.playbook import (
     PlaybookCreateRequest,
     PlaybookListResponse,
     PlaybookResponse,
+    PlaybookSource,
     PlaybookUpdateRequest,
     VendorOnboardingCaseListItem,
     VendorOnboardingCaseListResponse,
@@ -552,8 +553,6 @@ async def get_vendor_onboarding_case(
         ),
         {"draft_id": row["draft_id"]},
     )
-    from app.schemas.playbook import PlaybookSource
-
     sources = [PlaybookSource(**dict(citation)) for citation in citations_result.mappings()]
     return VendorOnboardingCaseResponse(
         case_id=str(row["case_id"]),
