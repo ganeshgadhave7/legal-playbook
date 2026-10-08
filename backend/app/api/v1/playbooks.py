@@ -156,17 +156,24 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    draft_filter = "d.id = :draft_id" if draft_id else "d.version = (SELECT max(version) FROM drafts WHERE case_id = c.id)"
-    draft_result = await db.execute(
-        text(
-            f"""
-            SELECT d.id, d.version, d.status AS draft_status, d.content, d.disclaimer
-            FROM drafts d
-            WHERE d.case_id = :case_id AND {draft_filter}
-            """
-        ),
-        {"case_id": case_id, "draft_id": draft_id} if draft_id else {"case_id": case_id},
-    )
+    if draft_id:
+        draft_result = await db.execute(
+            text("SELECT id, version, status AS draft_status, content, disclaimer FROM drafts WHERE id = :draft_id"),
+            {"draft_id": draft_id},
+        )
+    else:
+        draft_result = await db.execute(
+            text(
+                """
+                SELECT id, version, status AS draft_status, content, disclaimer
+                FROM drafts
+                WHERE case_id = :case_id
+                ORDER BY version DESC
+                LIMIT 1
+                """
+            ),
+            {"case_id": case_id},
+        )
     draft = draft_result.mappings().first()
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
