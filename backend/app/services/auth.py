@@ -20,11 +20,13 @@ ALGORITHM = "HS256"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # bcrypt ignores bytes beyond the first 72.
+    return pwd_context.verify(plain_password[:72], hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    # bcrypt has a hard 72-byte input limit.
+    return pwd_context.hash(password[:72])
 
 
 def create_access_token(user_id: UUID, expires_delta: timedelta | None = None) -> str:
