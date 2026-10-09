@@ -512,14 +512,14 @@ async def publish_playbook(
     key: str,
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
-    """Publish the latest draft version of a playbook."""
+    """Publish or republish the latest version of a playbook."""
     row = await _get_latest_playbook_row(key, db)
     if row is None:
         raise HTTPException(status_code=404, detail=f"Playbook '{key}' not found")
-    if row["status"] != "draft":
+    if row["status"] not in {"draft", "archived"}:
         raise HTTPException(
             status_code=409,
-            detail=f"Only draft playbooks can be published; current status is '{row['status']}'",
+            detail=f"Playbook is already published",
         )
 
     result = await db.execute(

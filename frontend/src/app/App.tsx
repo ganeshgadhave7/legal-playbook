@@ -1075,6 +1075,11 @@ function App() {
                             </button>
                           </>
                         )}
+                        {p.status === "archived" && (
+                          <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
+                            Republish
+                          </button>
+                        )}
                       </span>
                     </div>
                   ))
