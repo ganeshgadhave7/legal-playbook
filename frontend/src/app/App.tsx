@@ -16,6 +16,10 @@ import {
   setAuthToken,
   updateDraft,
   createDraftVersion,
+  listDraftVersions,
+  getDraftVersion,
+  exportDraft,
+  type DraftVersion,
   updatePlaybook,
   uploadDocument,
   type GenericDraft,
@@ -104,6 +108,8 @@ function App() {
   const [draftHtml, setDraftHtml] = useState<string>("");
   const [savingDraft, setSavingDraft] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
+  const [viewingVersion, setViewingVersion] = useState<PlaybookCase | null>(null);
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -138,6 +144,17 @@ function App() {
       setUser(null);
     });
   }, [token]);
+
+  useEffect(() => {
+    if (!selectedCase) {
+      setDraftVersions([]);
+      setViewingVersion(null);
+      return;
+    }
+    listDraftVersions(selectedCase.case_id)
+      .then((result) => setDraftVersions(result.items))
+      .catch(() => setDraftVersions([]));
+  }, [selectedCase?.case_id]);
 
   useEffect(() => {
     if (!token) return;
@@ -306,6 +323,23 @@ function App() {
     setViewingPlaybook(playbook);
   }
 
+  async function exportDraftFile(draft: PlaybookCase, format: "html" | "docx" | "pdf") {
+    try {
+      const blob = await exportDraft(draft.case_id, draft.draft_id, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${draft.playbook_title.replace(/\s+/g, "_")}_v${draft.draft_version}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setSuccess(`Exported as ${format.toUpperCase()}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not export as ${format.toUpperCase()}.`);
+    }
+  }
+
   function startEditingDraft() {
     if (!selectedCase) return;
     setDraftHtml(selectedCase.full_html);
@@ -328,6 +362,7 @@ function App() {
           ? await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftHtml)
           : await createDraftVersion(selectedCase.case_id, draftHtml);
       setSelectedCase(updated);
+      setViewingVersion(null);
       setIsEditingDraft(false);
       setDraftHtml("");
       setSuccess(mode === "overwrite" ? "Draft updated successfully." : "New draft version saved successfully.");
@@ -1232,67 +1267,119 @@ function App() {
                       <p>Choose a saved draft from the list to review or edit its intake answers.</p>
                     </div>
                   ) : (
-                    <div className="draft-card">
-                      <div className="draft-header">
-                        <div>
-                          <div className="eyebrow">SAVED DRAFT</div>
-                          <h2>{selectedCase.playbook_title}</h2>
-                        </div>
-                        <span className="draft-state">V{selectedCase.draft_version} · {selectedCase.draft_status.replaceAll("_", " ").toUpperCase()}</span>
-                      </div>
-                      <div className="review-actions">
-                        {!isEditingDraft ? (
-                          <button className="button primary" onClick={startEditingDraft}>
-                            Edit draft
-                          </button>
-                        ) : (
-                          <>
-                            <button className="button secondary" onClick={cancelEditingDraft} disabled={savingDraft}>
-                              Cancel
-                            </button>
-                            <button className="button primary" onClick={() => saveDraftChanges("overwrite")} disabled={savingDraft}>
-                              {savingDraft ? "Saving…" : "Overwrite current draft"}
-                            </button>
-                            <button className="button primary" onClick={() => saveDraftChanges("new_version")} disabled={savingDraft}>
-                              {savingDraft ? "Saving…" : "Save as new version"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      <div className="disclaimer">{selectedCase.disclaimer}</div>
-                      {isEditingDraft ? (
-                        <div className="draft-section">
-                          <RichTextEditor
-                            value={draftHtml}
-                            onChange={setDraftHtml}
-                            height={500}
-                          />
-                        </div>
-                      ) : (
-                        <div
-                          className="draft-section rich-document"
-                          dangerouslySetInnerHTML={{ __html: selectedCase.full_html }}
-                        />
-                      )}
-                      <div className="draft-section sources-section">
-                        <h3>
-                          Retrieved sources <span>{selectedCase.sources.length}</span>
-                        </h3>
-                        {selectedCase.sources.map((source) => (
-                          <div className="source-citation" key={source.chunk_id}>
-                            <span className="citation-mark">§</span>
+                    (() => {
+                      const display = viewingVersion || selectedCase;
+                      const isLatest = !viewingVersion || viewingVersion.draft_id === selectedCase.draft_id;
+                      return (
+                        <div className="draft-card">
+                          <div className="draft-header">
                             <div>
-                              <strong>{source.title}</strong>
-                              <small>
-                                {source.document_code ?? "Source"} · v{source.version}
-                                {source.section ? ` · ${source.section}` : ""}
-                              </small>
+                              <div className="eyebrow">SAVED DRAFT</div>
+                              <h2>{display.playbook_title}</h2>
                             </div>
-                            <span className="similarity">{Math.round(source.similarity * 100)}%</span>
+                            <span className="draft-state">
+                              V{display.draft_version} · {display.draft_status.replaceAll("_", " ").toUpperCase()}
+                              {!isLatest && " · OLD VERSION"}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                          <div className="review-actions">
+                            {!isEditingDraft && (
+                              <>
+                                <button className="button secondary" onClick={() => exportDraftFile(display, "html")}>
+                                  Export HTML
+                                </button>
+                                <button className="button secondary" onClick={() => exportDraftFile(display, "docx")}>
+                                  Export Word
+                                </button>
+                                <button className="button secondary" onClick={() => exportDraftFile(display, "pdf")}>
+                                  Export PDF
+                                </button>
+                                {isLatest && (
+                                  <button className="button primary" onClick={startEditingDraft}>
+                                    Edit draft
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {isEditingDraft && (
+                              <>
+                                <button className="button secondary" onClick={cancelEditingDraft} disabled={savingDraft}>
+                                  Cancel
+                                </button>
+                                <button className="button primary" onClick={() => saveDraftChanges("overwrite")} disabled={savingDraft}>
+                                  {savingDraft ? "Saving…" : "Overwrite current draft"}
+                                </button>
+                                <button className="button primary" onClick={() => saveDraftChanges("new_version")} disabled={savingDraft}>
+                                  {savingDraft ? "Saving…" : "Save as new version"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          <div className="disclaimer">{display.disclaimer}</div>
+                          {isEditingDraft ? (
+                            <div className="draft-section">
+                              <RichTextEditor value={draftHtml} onChange={setDraftHtml} height={500} />
+                            </div>
+                          ) : (
+                            <div
+                              className="draft-section rich-document"
+                              dangerouslySetInnerHTML={{ __html: display.full_html }}
+                            />
+                          )}
+                          <div className="draft-section">
+                            <h3>Versions</h3>
+                            <div className="version-table">
+                              <div className="table-head">
+                                <span>VERSION</span>
+                                <span>STATUS</span>
+                                <span>CREATED</span>
+                                <span>ACTION</span>
+                              </div>
+                              {draftVersions.map((v) => (
+                                <div className="table-row" key={v.draft_id}>
+                                  <span>V{v.version}</span>
+                                  <span>{v.status.replaceAll("_", " ")}</span>
+                                  <span>{new Date(v.created_at).toLocaleString()}</span>
+                                  <span className="row-actions">
+                                    <button
+                                      className="text-action"
+                                      onClick={async () => {
+                                        try {
+                                          const full = await getDraftVersion(selectedCase.case_id, v.draft_id);
+                                          setViewingVersion(full);
+                                        } catch (e) {
+                                          setError(e instanceof Error ? e.message : "Could not load version.");
+                                        }
+                                      }}
+                                    >
+                                      View
+                                    </button>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="draft-section sources-section">
+                            <h3>
+                              Retrieved sources <span>{display.sources.length}</span>
+                            </h3>
+                            {display.sources.map((source) => (
+                              <div className="source-citation" key={source.chunk_id}>
+                                <span className="citation-mark">§</span>
+                                <div>
+                                  <strong>{source.title}</strong>
+                                  <small>
+                                    {source.document_code ?? "Source"} · v{source.version}
+                                    {source.section ? ` · ${source.section}` : ""}
+                                  </small>
+                                </div>
+                                <span className="similarity">{Math.round(source.similarity * 100)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               </div>

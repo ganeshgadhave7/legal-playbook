@@ -216,6 +216,25 @@ export async function createDraftVersion(caseId: string, fullHtml: string): Prom
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_html: fullHtml }) }));
 }
 
+export type DraftVersion = { draft_id: string; version: number; status: string; created_at: string };
+
+export async function listDraftVersions(caseId: string): Promise<{ items: DraftVersion[]; total: number }> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts`));
+}
+
+export async function getDraftVersion(caseId: string, draftId: string): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`));
+}
+
+export async function exportDraft(caseId: string, draftId: string, format: "html" | "docx" | "pdf"): Promise<Blob> {
+  const response = await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}/export?format=${format}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Export failed: ${response.statusText}`);
+  }
+  return response.blob();
+}
+
 // Legacy vendor-onboarding APIs (kept for compatibility)
 export async function listVendorCases(): Promise<VendorCaseList> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases?limit=50`)); }
 export async function getVendorCase(caseId: string): Promise<VendorOnboardingDraft> { return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/vendor-onboarding/cases/${caseId}`)); }

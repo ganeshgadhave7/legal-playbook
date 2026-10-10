@@ -1,12 +1,19 @@
 """Vendor Onboarding Playbook endpoints."""
 import html
+import io
 import json
+import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from docx import Document
+from docx.shared import Inches
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from xhtml2pdf import pisa
 
 from app.db.session import get_db_session
 from app.models.user import User
@@ -405,6 +412,134 @@ async def create_draft_version(
 
     await db.commit()
     return await _build_case_response(db, case_id, new_draft_id)
+
+
+class DraftVersionListItem(BaseModel):
+    draft_id: str
+    version: int
+    status: str
+    created_at: datetime
+
+
+class DraftVersionListResponse(BaseModel):
+    items: list[DraftVersionListItem]
+    total: int
+
+
+@router.get("/cases/{case_id}/drafts", response_model=DraftVersionListResponse)
+async def list_draft_versions(
+    case_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> DraftVersionListResponse:
+    """List all draft versions for a case."""
+    case_result = await db.execute(text("SELECT id FROM cases WHERE id = :case_id"), {"case_id": case_id})
+    if case_result.mappings().first() is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    result = await db.execute(
+        text(
+            """
+            SELECT id AS draft_id, version, status, created_at
+            FROM drafts
+            WHERE case_id = :case_id
+            ORDER BY version DESC
+            """
+        ),
+        {"case_id": case_id},
+    )
+    items = [DraftVersionListItem(**dict(row)) for row in result.mappings()]
+    return DraftVersionListResponse(items=items, total=len(items))
+
+
+@router.get("/cases/{case_id}/drafts/{draft_id}", response_model=PlaybookCaseResponse)
+async def get_draft_version(
+    case_id: UUID,
+    draft_id: UUID,
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Get a specific draft version of a case."""
+    return await _build_case_response(db, case_id, draft_id)
+
+
+@router.get("/cases/{case_id}/drafts/{draft_id}/export")
+async def export_draft(
+    case_id: UUID,
+    draft_id: UUID,
+    format: str = Query(default="html", pattern="^(html|docx|pdf)$"),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Export a specific draft version as HTML, DOCX, or PDF."""
+    draft_data = await _build_case_response(db, case_id, draft_id)
+    title = draft_data.playbook_title or "draft"
+    safe_title = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in title)
+
+    if format == "html":
+        html_body = (
+            f"<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
+            f"<title>{html.escape(title)}</title>\n"
+            "<style>body{font-family:Arial,sans-serif;line-height:1.6;max-width:800px;margin:40px auto;color:#333}"
+            "h2{color:#2e3b33}h3{color:#3f6248}ul.risk-list li::marker{color:#c18741}</style>\n"
+            "</head>\n<body>\n"
+            f"{draft_data.full_html}\n"
+            "</body>\n</html>"
+        )
+        return StreamingResponse(
+            io.BytesIO(html_body.encode("utf-8")),
+            media_type="text/html",
+            headers={"Content-Disposition": f"attachment; filename={safe_title}_v{draft_data.draft_version}.html"},
+        )
+
+    if format == "docx":
+        document = Document()
+        document.add_heading(title, level=1)
+        # Strip HTML tags for simple Word export.
+        plain = html_to_plain_text(draft_data.full_html)
+        for paragraph in plain.split("\n"):
+            if paragraph.strip():
+                if paragraph.strip().startswith("#"):
+                    level = min(paragraph.count("#"), 3)
+                    document.add_heading(paragraph.strip("# "), level=level)
+                else:
+                    document.add_paragraph(paragraph)
+        buffer = io.BytesIO()
+        document.save(buffer)
+        buffer.seek(0)
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={safe_title}_v{draft_data.draft_version}.docx"},
+        )
+
+    # PDF
+    pdf_buffer = io.BytesIO()
+    html_body = (
+        f"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        f"<title>{html.escape(title)}</title>"
+        "<style>body{font-family:Arial,sans-serif;line-height:1.6;margin:40px;color:#333}"
+        "h2{color:#2e3b33}h3{color:#3f6248}ul.risk-list li::marker{color:#c18741}</style>"
+        f"</head><body>{draft_data.full_html}</body></html>"
+    )
+    pisa.CreatePDF(html_body, dest=pdf_buffer)
+    pdf_buffer.seek(0)
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={safe_title}_v{draft_data.draft_version}.pdf"},
+    )
+
+
+def html_to_plain_text(html_text: str) -> str:
+    """Very basic HTML to plain text with heading markers."""
+    text = html_text.replace("<h2>", "\n# ").replace("</h2>", "\n")
+    text = text.replace("<h3>", "\n## ").replace("</h3>", "\n")
+    text = text.replace("<p>", "").replace("</p>", "\n")
+    text = text.replace("<ul>", "").replace("</ul>", "")
+    text = text.replace("<ul class=\"risk-list\">", "").replace('</ul>', "")
+    text = text.replace("<li>", "• ").replace("</li>", "\n")
+    text = text.replace("<br>", "\n").replace("<br/>", "\n")
+    # Remove any remaining tags.
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip()
 
 
 @router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)

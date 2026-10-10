@@ -3,13 +3,18 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies for asyncpg, docx extraction, and cryptography
+# Install system dependencies for asyncpg, docx extraction, cryptography, and xhtml2pdf
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     libffi-dev \
     libssl-dev \
     build-essential \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
