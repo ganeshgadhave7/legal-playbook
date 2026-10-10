@@ -1,8 +1,10 @@
 """FastAPI entry point for the Acme Legal Playbook demo."""
+import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -45,6 +47,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.exception_handler(Exception)
+async def debug_exception_handler(_request: Request, exc: Exception):
+    """Return traceback details for unexpected errors (demo debugging only)."""
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exception(type(exc), exc, exc.__traceback__)},
+    )
 
 
 @app.get("/health", tags=["health"])

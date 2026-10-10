@@ -176,7 +176,7 @@ function App() {
     Promise.all([checkHealth(), refreshDocuments(), refreshPlaybooks(), refreshCases()])
       .then(([health]) => setApiState(health.database === "connected" ? "connected" : "unavailable"))
       .catch(() => setApiState("unavailable"));
-  }, [refreshDocuments, refreshPlaybooks]);
+  }, [token, refreshDocuments, refreshPlaybooks, refreshCases]);
 
   useEffect(() => {
     // Reset answers when playbook changes
