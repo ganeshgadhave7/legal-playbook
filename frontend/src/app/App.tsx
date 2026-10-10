@@ -118,6 +118,9 @@ function App() {
   const [auditOffset, setAuditOffset] = useState(0);
   const [auditActionFilter, setAuditActionFilter] = useState("");
   const [auditResourceTypeFilter, setAuditResourceTypeFilter] = useState("");
+  const [auditPendingAction, setAuditPendingAction] = useState("");
+  const [auditPendingResourceType, setAuditPendingResourceType] = useState("");
+  const [auditShowRequests, setAuditShowRequests] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
 
   const refreshDocuments = useCallback(async () => {
@@ -145,6 +148,7 @@ function App() {
         limit: 50,
         offset: auditOffset,
         action: auditActionFilter || undefined,
+        exclude_action: auditShowRequests ? undefined : "api_request",
         resource_type: auditResourceTypeFilter || undefined,
       });
       setAuditLogs(result.items);
@@ -152,7 +156,7 @@ function App() {
     } finally {
       setAuditLoading(false);
     }
-  }, [auditOffset, auditActionFilter, auditResourceTypeFilter]);
+  }, [auditOffset, auditActionFilter, auditResourceTypeFilter, auditShowRequests]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -199,7 +203,7 @@ function App() {
     if (tab === "audit") {
       refreshAuditLogs();
     }
-  }, [tab, refreshAuditLogs]);
+  }, [tab, auditOffset]);
 
   useEffect(() => {
     if (!token) return;
@@ -1464,8 +1468,8 @@ function App() {
                   <input
                     type="text"
                     placeholder="e.g. login_success, draft_update"
-                    value={auditActionFilter}
-                    onChange={(e) => setAuditActionFilter(e.target.value)}
+                    value={auditPendingAction}
+                    onChange={(e) => setAuditPendingAction(e.target.value)}
                   />
                 </label>
                 <label>
@@ -1473,13 +1477,33 @@ function App() {
                   <input
                     type="text"
                     placeholder="e.g. draft, playbook, source_document"
-                    value={auditResourceTypeFilter}
-                    onChange={(e) => setAuditResourceTypeFilter(e.target.value)}
+                    value={auditPendingResourceType}
+                    onChange={(e) => setAuditPendingResourceType(e.target.value)}
                   />
                 </label>
-                <button className="button secondary" onClick={refreshAuditLogs} disabled={auditLoading}>
+                <button
+                  className="button secondary"
+                  onClick={() => {
+                    setAuditActionFilter(auditPendingAction);
+                    setAuditResourceTypeFilter(auditPendingResourceType);
+                    setAuditOffset(0);
+                    refreshAuditLogs();
+                  }}
+                  disabled={auditLoading}
+                >
                   {auditLoading ? "Loading…" : "Filter"}
                 </button>
+                <label className="check-row audit-toggle">
+                  <input
+                    type="checkbox"
+                    checked={auditShowRequests}
+                    onChange={(e) => setAuditShowRequests(e.target.checked)}
+                  />
+                  <div>
+                    <b>Show API requests</b>
+                    <small>Includes every endpoint call (noisy)</small>
+                  </div>
+                </label>
               </div>
               <div className="table-card">
                 <div className="table-head audit-head">

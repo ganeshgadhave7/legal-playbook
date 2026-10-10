@@ -243,12 +243,14 @@ export async function listAuditLogs(params?: {
   limit?: number;
   offset?: number;
   action?: string;
+  exclude_action?: string;
   resource_type?: string;
 }): Promise<{ items: AuditLog[]; total: number }> {
   const query = new URLSearchParams();
   if (params?.limit) query.set("limit", String(params.limit));
   if (params?.offset) query.set("offset", String(params.offset));
   if (params?.action) query.set("action", params.action);
+  if (params?.exclude_action) query.set("exclude_action", params.exclude_action);
   if (params?.resource_type) query.set("resource_type", params.resource_type);
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/audit-logs?${query.toString()}`));
 }

@@ -55,8 +55,12 @@ app.add_middleware(
 async def audit_request_middleware(request: Request, call_next):
     """Log every incoming request and its outcome (success / HTTP error)."""
     response = await call_next(request)
-    # Skip health checks and static files to keep logs useful.
-    if request.url.path in {"/health", "/docs", "/openapi.json"} or request.url.path.startswith("/static"):
+    # Skip health checks, static files, and audit-log reads to keep logs useful.
+    if (
+        request.url.path in {"/health", "/docs", "/openapi.json"}
+        or request.url.path.startswith("/static")
+        or request.url.path == "/api/v1/audit-logs"
+    ):
         return response
 
     # Extract user id from the Authorization header if available.

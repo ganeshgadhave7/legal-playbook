@@ -37,6 +37,7 @@ async def list_audit_logs(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None),
+    exclude_action: str | None = Query(default=None),
     resource_type: str | None = Query(default=None),
     user_id: UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db_session),
@@ -49,6 +50,9 @@ async def list_audit_logs(
     if action:
         conditions.append("action = :action")
         params["action"] = action
+    if exclude_action:
+        conditions.append("action != :exclude_action")
+        params["exclude_action"] = exclude_action
     if resource_type:
         conditions.append("resource_type = :resource_type")
         params["resource_type"] = resource_type
