@@ -15,6 +15,7 @@ import {
   revisePlaybookCase,
   setAuthToken,
   updateDraft,
+  createDraftVersion,
   updatePlaybook,
   uploadDocument,
   type GenericDraft,
@@ -316,20 +317,23 @@ function App() {
     setDraftHtml("");
   }
 
-  async function saveDraftChanges() {
+  async function saveDraftChanges(mode: "overwrite" | "new_version") {
     if (!selectedCase) return;
     setSavingDraft(true);
     setError("");
     setSuccess("");
     try {
-      const updated = await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftHtml);
+      const updated =
+        mode === "overwrite"
+          ? await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftHtml)
+          : await createDraftVersion(selectedCase.case_id, draftHtml);
       setSelectedCase(updated);
       setIsEditingDraft(false);
       setDraftHtml("");
-      setSuccess("Draft updated successfully.");
+      setSuccess(mode === "overwrite" ? "Draft updated successfully." : "New draft version saved successfully.");
       await refreshCases();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update draft.");
+      setError(e instanceof Error ? e.message : "Could not save draft.");
     } finally {
       setSavingDraft(false);
     }
@@ -1214,7 +1218,7 @@ function App() {
                         }}
                       >
                         <strong>{c.playbook_title}</strong>
-                        <span>{c.case_status.replaceAll("_", " ")}</span>
+                        <span>V{c.draft_version} · {c.case_status.replaceAll("_", " ")}</span>
                         <small>{new Date(c.created_at).toLocaleString()}</small>
                       </button>
                     ))
@@ -1234,7 +1238,7 @@ function App() {
                           <div className="eyebrow">SAVED DRAFT</div>
                           <h2>{selectedCase.playbook_title}</h2>
                         </div>
-                        <span className="draft-state">{selectedCase.draft_status.replaceAll("_", " ").toUpperCase()}</span>
+                        <span className="draft-state">V{selectedCase.draft_version} · {selectedCase.draft_status.replaceAll("_", " ").toUpperCase()}</span>
                       </div>
                       <div className="review-actions">
                         {!isEditingDraft ? (
@@ -1246,8 +1250,11 @@ function App() {
                             <button className="button secondary" onClick={cancelEditingDraft} disabled={savingDraft}>
                               Cancel
                             </button>
-                            <button className="button primary" onClick={saveDraftChanges} disabled={savingDraft}>
-                              {savingDraft ? "Saving…" : "Update draft"}
+                            <button className="button primary" onClick={() => saveDraftChanges("overwrite")} disabled={savingDraft}>
+                              {savingDraft ? "Saving…" : "Overwrite current draft"}
+                            </button>
+                            <button className="button primary" onClick={() => saveDraftChanges("new_version")} disabled={savingDraft}>
+                              {savingDraft ? "Saving…" : "Save as new version"}
                             </button>
                           </>
                         )}

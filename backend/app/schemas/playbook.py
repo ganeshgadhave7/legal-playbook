@@ -191,6 +191,7 @@ class GenericDraftResponse(BaseModel):
 class PlaybookCaseListItem(BaseModel):
     case_id: str
     draft_id: str
+    draft_version: int
     playbook_key: str
     playbook_version: str
     playbook_title: str
@@ -207,6 +208,7 @@ class PlaybookCaseListResponse(BaseModel):
 class PlaybookCaseResponse(BaseModel):
     case_id: str
     draft_id: str
+    draft_version: int
     playbook_key: str
     playbook_version: str
     playbook_title: str

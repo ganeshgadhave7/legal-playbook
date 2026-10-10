@@ -236,6 +236,7 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
     return PlaybookCaseResponse(
         case_id=str(case["id"]),
         draft_id=str(draft["id"]),
+        draft_version=int(draft["version"]),
         playbook_key=case["playbook_key"],
         playbook_version=case["playbook_version"],
         playbook_title=case["playbook_title"] or case["playbook_key"],
@@ -269,11 +270,11 @@ async def list_playbook_cases(
             """
             SELECT c.id AS case_id, c.playbook_key, c.playbook_version,
                    c.status AS case_status, c.created_at, p.title AS playbook_title,
-                   d.id AS draft_id, d.status AS draft_status
+                   d.id AS draft_id, d.version AS draft_version, d.status AS draft_status
             FROM cases c
             LEFT JOIN playbooks p ON p.id = c.playbook_id
             LEFT JOIN LATERAL (
-                SELECT id, status FROM drafts WHERE case_id = c.id ORDER BY version DESC LIMIT 1
+                SELECT id, version, status FROM drafts WHERE case_id = c.id ORDER BY version DESC LIMIT 1
             ) d ON true
             ORDER BY c.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -285,6 +286,7 @@ async def list_playbook_cases(
         PlaybookCaseListItem(
             case_id=str(row["case_id"]),
             draft_id=str(row["draft_id"]),
+            draft_version=row["draft_version"] or 1,
             playbook_key=row["playbook_key"],
             playbook_version=row["playbook_version"],
             playbook_title=row["playbook_title"] or row["playbook_key"],
@@ -344,6 +346,65 @@ async def update_draft_content(
     )
     await db.commit()
     return await _build_case_response(db, case_id, draft_id)
+
+
+@router.post("/cases/{case_id}/drafts", response_model=PlaybookCaseResponse)
+async def create_draft_version(
+    case_id: UUID,
+    request: DraftContentUpdate,
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Create a new draft version for a case with the provided content."""
+    case_result = await db.execute(text("SELECT id FROM cases WHERE id = :case_id"), {"case_id": case_id})
+    if case_result.mappings().first() is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    latest = await db.execute(
+        text("SELECT id, version, content, disclaimer FROM drafts WHERE case_id = :case_id ORDER BY version DESC LIMIT 1"),
+        {"case_id": case_id},
+    )
+    latest_draft = latest.mappings().first()
+    if latest_draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    content = dict(latest_draft["content"]) if latest_draft["content"] else {}
+    if request.full_html is not None:
+        content["full_html"] = request.full_html
+
+    new_draft_id = uuid4()
+    new_version = int(latest_draft["version"]) + 1
+
+    await db.execute(
+        text(
+            """
+            INSERT INTO drafts (id, case_id, version, status, content, disclaimer)
+            VALUES (:id, :case_id, :version, 'pending_review', CAST(:content AS jsonb), :disclaimer)
+            """
+        ),
+        {
+            "id": new_draft_id,
+            "case_id": case_id,
+            "version": new_version,
+            "content": json.dumps(content),
+            "disclaimer": latest_draft["disclaimer"],
+        },
+    )
+
+    # Copy citations from the previous draft so source references are retained.
+    await db.execute(
+        text(
+            """
+            INSERT INTO draft_citations (id, draft_id, chunk_id, rank, similarity)
+            SELECT gen_random_uuid(), :new_draft_id, chunk_id, rank, similarity
+            FROM draft_citations
+            WHERE draft_id = :old_draft_id
+            """
+        ),
+        {"new_draft_id": new_draft_id, "old_draft_id": latest_draft["id"]},
+    )
+
+    await db.commit()
+    return await _build_case_response(db, case_id, new_draft_id)
 
 
 @router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)

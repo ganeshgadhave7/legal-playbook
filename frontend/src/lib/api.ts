@@ -176,6 +176,7 @@ export async function createGenericDraft(playbookKey: string, playbookVersion: s
 export type PlaybookCase = {
   case_id: string;
   draft_id: string;
+  draft_version: number;
   playbook_key: string;
   playbook_version: string;
   playbook_title: string;
@@ -193,7 +194,7 @@ export type PlaybookCase = {
   sources: PlaybookSource[];
 };
 
-export type PlaybookCaseList = { items: Array<{ case_id: string; draft_id: string; playbook_key: string; playbook_version: string; playbook_title: string; case_status: string; draft_status: string; created_at: string }>; total: number };
+export type PlaybookCaseList = { items: Array<{ case_id: string; draft_id: string; draft_version: number; playbook_key: string; playbook_version: string; playbook_title: string; case_status: string; draft_status: string; created_at: string }>; total: number };
 
 export async function listPlaybookCases(): Promise<PlaybookCaseList> {
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases?limit=50`));
@@ -209,6 +210,10 @@ export async function revisePlaybookCase(caseId: string, answers: Record<string,
 
 export async function updateDraft(caseId: string, draftId: string, fullHtml: string): Promise<PlaybookCase> {
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_html: fullHtml }) }));
+}
+
+export async function createDraftVersion(caseId: string, fullHtml: string): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_html: fullHtml }) }));
 }
 
 // Legacy vendor-onboarding APIs (kept for compatibility)
