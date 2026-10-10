@@ -11,6 +11,7 @@ export function RichTextEditor({ value, onChange, height = 250, placeholder }: R
   return (
     <Editor
       tinymceScriptSrc="/tinymce/tinymce.min.js"
+      licenseKey="gpl"
       value={value}
       onEditorChange={(content) => onChange(content)}
       init={{
