@@ -154,8 +154,22 @@ function App() {
     }
     listDraftVersions(selectedCase.case_id)
       .then((result) => setDraftVersions(result.items))
-      .catch(() => setDraftVersions([]));
+      .catch((e) => {
+        console.error("Failed to load draft versions:", e);
+        setDraftVersions([]);
+      });
   }, [selectedCase?.case_id]);
+
+  useEffect(() => {
+    if (tab === "drafts" && cases.length > 0 && !selectedCase) {
+      getPlaybookCase(cases[0].case_id)
+        .then((full) => setSelectedCase(full))
+        .catch((e) => {
+          console.error("Auto-load first draft failed:", e);
+          setError(e instanceof Error ? e.message : "Could not load draft.");
+        });
+    }
+  }, [tab, cases.length, selectedCase?.case_id]);
 
   useEffect(() => {
     if (!token) return;
@@ -1247,8 +1261,10 @@ function App() {
                         onClick={async () => {
                           try {
                             const full = await getPlaybookCase(c.case_id);
+                            setViewingVersion(null);
                             setSelectedCase(full);
                           } catch (e) {
+                            console.error("Load draft failed:", e);
                             setError(e instanceof Error ? e.message : "Could not load draft.");
                           }
                         }}
