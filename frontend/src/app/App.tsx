@@ -100,7 +100,7 @@ function App() {
   const [selectedCase, setSelectedCase] = useState<PlaybookCase | null>(null);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
-  const [draftEditForm, setDraftEditForm] = useState<Partial<Pick<PlaybookCase, "summary" | "checklist" | "risk_indicators" | "missing_information" | "recommended_next_steps">>>({});
+  const [draftHtml, setDraftHtml] = useState<string>("");
   const [savingDraft, setSavingDraft] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
 
@@ -307,23 +307,13 @@ function App() {
 
   function startEditingDraft() {
     if (!selectedCase) return;
-    setDraftEditForm({
-      summary: selectedCase.summary,
-      checklist: selectedCase.checklist,
-      risk_indicators: selectedCase.risk_indicators,
-      missing_information: selectedCase.missing_information,
-      recommended_next_steps: selectedCase.recommended_next_steps,
-    });
+    setDraftHtml(selectedCase.full_html);
     setIsEditingDraft(true);
   }
 
   function cancelEditingDraft() {
     setIsEditingDraft(false);
-    setDraftEditForm({});
-  }
-
-  function updateDraftField<K extends keyof typeof draftEditForm>(field: K, value: (typeof draftEditForm)[K]) {
-    setDraftEditForm((current) => ({ ...current, [field]: value }));
+    setDraftHtml("");
   }
 
   async function saveDraftChanges() {
@@ -332,10 +322,10 @@ function App() {
     setError("");
     setSuccess("");
     try {
-      const updated = await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftEditForm);
+      const updated = await updateDraft(selectedCase.case_id, selectedCase.draft_id, draftHtml);
       setSelectedCase(updated);
       setIsEditingDraft(false);
-      setDraftEditForm({});
+      setDraftHtml("");
       setSuccess("Draft updated successfully.");
       await refreshCases();
     } catch (e) {
@@ -1263,81 +1253,20 @@ function App() {
                         )}
                       </div>
                       <div className="disclaimer">{selectedCase.disclaimer}</div>
-                      <div className="draft-section">
-                        <h3>Summary</h3>
-                        {isEditingDraft ? (
+                      {isEditingDraft ? (
+                        <div className="draft-section">
                           <RichTextEditor
-                            value={draftEditForm.summary ?? ""}
-                            onChange={(value) => updateDraftField("summary", value)}
-                            height={180}
+                            value={draftHtml}
+                            onChange={setDraftHtml}
+                            height={500}
                           />
-                        ) : (
-                          <div
-                            className="rich-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCase.summary }}
-                          />
-                        )}
-                      </div>
-                      <div className="draft-section">
-                        <h3>Checklist</h3>
-                        {isEditingDraft ? (
-                          <RichTextEditor
-                            value={draftEditForm.checklist ?? ""}
-                            onChange={(value) => updateDraftField("checklist", value)}
-                            height={220}
-                          />
-                        ) : (
-                          <div
-                            className="rich-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCase.checklist }}
-                          />
-                        )}
-                      </div>
-                      <div className="draft-section">
-                        <h3>Risk indicators</h3>
-                        {isEditingDraft ? (
-                          <RichTextEditor
-                            value={draftEditForm.risk_indicators ?? ""}
-                            onChange={(value) => updateDraftField("risk_indicators", value)}
-                            height={220}
-                          />
-                        ) : (
-                          <div
-                            className="rich-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCase.risk_indicators }}
-                          />
-                        )}
-                      </div>
-                      <div className="draft-section">
-                        <h3>Missing information</h3>
-                        {isEditingDraft ? (
-                          <RichTextEditor
-                            value={draftEditForm.missing_information ?? ""}
-                            onChange={(value) => updateDraftField("missing_information", value)}
-                            height={220}
-                          />
-                        ) : (
-                          <div
-                            className="rich-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCase.missing_information }}
-                          />
-                        )}
-                      </div>
-                      <div className="draft-section">
-                        <h3>Recommended next steps</h3>
-                        {isEditingDraft ? (
-                          <RichTextEditor
-                            value={draftEditForm.recommended_next_steps ?? ""}
-                            onChange={(value) => updateDraftField("recommended_next_steps", value)}
-                            height={220}
-                          />
-                        ) : (
-                          <div
-                            className="rich-content"
-                            dangerouslySetInnerHTML={{ __html: selectedCase.recommended_next_steps }}
-                          />
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="draft-section rich-document"
+                          dangerouslySetInnerHTML={{ __html: selectedCase.full_html }}
+                        />
+                      )}
                       <div className="draft-section sources-section">
                         <h3>
                           Retrieved sources <span>{selectedCase.sources.length}</span>

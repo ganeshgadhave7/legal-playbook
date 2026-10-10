@@ -10,7 +10,7 @@ export type RichTextEditorProps = {
 export function RichTextEditor({ value, onChange, height = 250, placeholder }: RichTextEditorProps) {
   return (
     <Editor
-      apiKey="" // Use the open-source core (no API key required for self-hosted bundle).
+      tinymceScriptSrc="/tinymce/tinymce.min.js"
       value={value}
       onEditorChange={(content) => onChange(content)}
       init={{

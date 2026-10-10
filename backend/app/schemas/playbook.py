@@ -220,6 +220,7 @@ class PlaybookCaseResponse(BaseModel):
     risk_indicators: str
     missing_information: str
     recommended_next_steps: str
+    full_html: str
     sources: list[PlaybookSource]
 
 
@@ -229,8 +230,4 @@ class GenericRevisionRequest(BaseModel):
 
 
 class DraftContentUpdate(BaseModel):
-    summary: str | None = Field(default=None, max_length=8000)
-    checklist: str | None = Field(default=None, max_length=20000)
-    risk_indicators: str | None = Field(default=None, max_length=20000)
-    missing_information: str | None = Field(default=None, max_length=20000)
-    recommended_next_steps: str | None = Field(default=None, max_length=20000)
+    full_html: str | None = Field(default=None, max_length=100000)

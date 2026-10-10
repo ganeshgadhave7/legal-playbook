@@ -1,4 +1,5 @@
 """Generic LangGraph workflow for any published playbook."""
+import html
 import json
 import re
 from typing import Any, NotRequired, TypedDict
@@ -236,6 +237,27 @@ async def assemble_draft(state: PlaybookDraftState) -> dict:
         )
         for row in passages
     ]
+
+    def _section_to_html(title: str, items: list[str] | str, list_class: str = "") -> str:
+        if isinstance(items, str):
+            body = items
+        elif items:
+            lis = "".join(f"<li>{html.escape(str(item))}</li>" for item in items)
+            body = f'<ul class="{list_class}">{lis}</ul>' if list_class else f"<ul>{lis}</ul>"
+        else:
+            body = ""
+        return f"<h3>{html.escape(title)}</h3>\n{body}"
+
+    full_html = "\n\n".join(
+        [
+            f"<h2>Draft Assessment</h2>\n<p>{html.escape(content.get('summary', ''))}</p>",
+            _section_to_html("Checklist", content.get("checklist", [])),
+            _section_to_html("Risk indicators", content.get("risk_indicators", []), "risk-list"),
+            _section_to_html("Missing information", content.get("missing_information", [])),
+            _section_to_html("Recommended next steps", content.get("recommended_next_steps", [])),
+        ]
+    )
+    content["full_html"] = full_html
 
     case_insert = await db.execute(
         text(

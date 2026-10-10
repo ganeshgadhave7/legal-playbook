@@ -189,6 +189,7 @@ export type PlaybookCase = {
   risk_indicators: string;
   missing_information: string;
   recommended_next_steps: string;
+  full_html: string;
   sources: PlaybookSource[];
 };
 
@@ -206,8 +207,8 @@ export async function revisePlaybookCase(caseId: string, answers: Record<string,
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/revisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, revision_note: revisionNote }) }));
 }
 
-export async function updateDraft(caseId: string, draftId: string, updates: Partial<Pick<PlaybookCase, "summary" | "checklist" | "risk_indicators" | "missing_information" | "recommended_next_steps">>): Promise<PlaybookCase> {
-  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) }));
+export async function updateDraft(caseId: string, draftId: string, fullHtml: string): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_html: fullHtml }) }));
 }
 
 // Legacy vendor-onboarding APIs (kept for compatibility)

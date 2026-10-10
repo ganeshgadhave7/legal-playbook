@@ -219,6 +219,20 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         return "<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in value) + "</ul>"
 
     content = draft["content"] or {}
+    summary = content.get("summary", "")
+    checklist = _to_html(content.get("checklist"))
+    risk_indicators = _to_html(content.get("risk_indicators"))
+    missing_information = _to_html(content.get("missing_information"))
+    recommended_next_steps = _to_html(content.get("recommended_next_steps"))
+    full_html = content.get("full_html") or "\n\n".join(
+        [
+            f"<h2>Draft Assessment</h2>\n<p>{html.escape(summary)}</p>",
+            f"<h3>Checklist</h3>\n{checklist}",
+            f'<h3>Risk indicators</h3>\n<ul class="risk-list">{risk_indicators}</ul>',
+            f"<h3>Missing information</h3>\n{missing_information}",
+            f"<h3>Recommended next steps</h3>\n{recommended_next_steps}",
+        ]
+    )
     return PlaybookCaseResponse(
         case_id=str(case["id"]),
         draft_id=str(draft["id"]),
@@ -230,11 +244,12 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         intake_answers=case["intake_answers"],
         created_at=case["created_at"],
         disclaimer=draft["disclaimer"],
-        summary=content.get("summary", ""),
-        checklist=_to_html(content.get("checklist")),
-        risk_indicators=_to_html(content.get("risk_indicators")),
-        missing_information=_to_html(content.get("missing_information")),
-        recommended_next_steps=_to_html(content.get("recommended_next_steps")),
+        summary=summary,
+        checklist=checklist,
+        risk_indicators=risk_indicators,
+        missing_information=missing_information,
+        recommended_next_steps=recommended_next_steps,
+        full_html=full_html,
         sources=sources,
     )
 
@@ -320,16 +335,8 @@ async def update_draft_content(
         raise HTTPException(status_code=404, detail="Draft not found")
 
     content = dict(row["content"]) if row["content"] else {}
-    if request.summary is not None:
-        content["summary"] = request.summary
-    if request.checklist is not None:
-        content["checklist"] = request.checklist
-    if request.risk_indicators is not None:
-        content["risk_indicators"] = request.risk_indicators
-    if request.missing_information is not None:
-        content["missing_information"] = request.missing_information
-    if request.recommended_next_steps is not None:
-        content["recommended_next_steps"] = request.recommended_next_steps
+    if request.full_html is not None:
+        content["full_html"] = request.full_html
 
     await db.execute(
         text("UPDATE drafts SET content = CAST(:content AS jsonb), updated_at = now() WHERE id = :draft_id"),
