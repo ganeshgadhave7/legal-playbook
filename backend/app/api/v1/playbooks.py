@@ -415,7 +415,7 @@ async def create_draft_version(
 
 
 class DraftVersionListItem(BaseModel):
-    draft_id: str
+    draft_id: UUID
     version: int
     status: str
     created_at: datetime
