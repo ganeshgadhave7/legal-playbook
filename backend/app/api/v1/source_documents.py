@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from docx import Document
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ from app.schemas.source_document import (
     SourceDocumentResponse,
     SourceDocumentUploadMetadata,
 )
+from app.services.audit import log_action
 from app.services.chunking import chunk_blocks
 from app.services.docx_extractor import extract_docx_bytes
 from app.services.auth import require_user
@@ -117,6 +118,8 @@ async def _set_document_status(db: AsyncSession, document_id: UUID, status_value
 async def decide_source_document(
     document_id: UUID,
     request: SourceDocumentDecisionRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> SourceDocumentResponse:
     """Record an approver decision; approved documents become eligible for indexing."""
@@ -267,11 +270,21 @@ async def decide_source_document(
         logger.exception("Failed to record source-document review")
         raise HTTPException(status_code=500, detail="Could not complete source indexing") from exc
 
+    await log_action(
+        db=db,
+        action=f"document_decision_{request.decision}",
+        user_id=current_user.id,
+        resource_type="source_document",
+        resource_id=str(document_id),
+        details={"reason": request.reason, "reviewer": request.reviewer},
+        request=http_request,
+    )
     return SourceDocumentResponse(**dict(updated))
 
 
 @router.post("", response_model=SourceDocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_source_document(
+    http_request: Request,
     file: UploadFile = File(...),
     title: str = Form(...),
     department: str = Form(...),
@@ -368,4 +381,21 @@ async def upload_source_document(
 
     # Log only safe metadata; do not log document content or secrets.
     logger.info("Uploaded source document %s with %d extracted blocks", row["id"], len(blocks))
+    await log_action(
+        db=db,
+        action="document_upload",
+        user_id=current_user.id,
+        resource_type="source_document",
+        resource_id=str(row["id"]),
+        details={
+            "title": title,
+            "department": department,
+            "document_type": document_type,
+            "version": version,
+            "document_code": document_code,
+            "fictional": fictional,
+            "blocks": len(blocks),
+        },
+        request=http_request,
+    )
     return SourceDocumentResponse(**dict(row))

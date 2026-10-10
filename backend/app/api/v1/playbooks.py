@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from docx import Document
 from docx.shared import Inches
 from fastapi.responses import StreamingResponse
@@ -38,6 +38,7 @@ from app.schemas.playbook import (
     VendorOnboardingCaseResponse,
     VendorOnboardingRequest,
 )
+from app.services.audit import log_action
 from app.services.usage_budget import UsageBudgetExceeded
 from app.services.voyage_embeddings import EmbeddingError
 from app.workflows.playbook_draft import (
@@ -100,6 +101,8 @@ async def list_playbooks(
 @router.post("", response_model=PlaybookResponse, status_code=status.HTTP_201_CREATED)
 async def create_playbook(
     request: PlaybookCreateRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Create a new playbook draft."""
@@ -141,7 +144,17 @@ async def create_playbook(
         },
     )
     await db.commit()
-    return PlaybookResponse(**dict(result.mappings().one()))
+    row = result.mappings().one()
+    await log_action(
+        db=db,
+        action="playbook_create",
+        user_id=current_user.id,
+        resource_type="playbook",
+        resource_id=f"{row['key']}:{row['version']}",
+        details={"title": row["title"], "department": row["department"]},
+        request=http_request,
+    )
+    return PlaybookResponse(**dict(row))
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +345,8 @@ async def update_draft_content(
     case_id: UUID,
     draft_id: UUID,
     request: DraftContentUpdate,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Update the editable content of a draft."""
@@ -352,13 +367,25 @@ async def update_draft_content(
         {"draft_id": draft_id, "content": json.dumps(content)},
     )
     await db.commit()
-    return await _build_case_response(db, case_id, draft_id)
+    updated = await _build_case_response(db, case_id, draft_id)
+    await log_action(
+        db=db,
+        action="draft_update",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(draft_id),
+        details={"case_id": str(case_id), "version": updated.draft_version},
+        request=http_request,
+    )
+    return updated
 
 
 @router.post("/cases/{case_id}/drafts", response_model=PlaybookCaseResponse)
 async def create_draft_version(
     case_id: UUID,
     request: DraftContentUpdate,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Create a new draft version for a case with the provided content."""
@@ -411,7 +438,17 @@ async def create_draft_version(
     )
 
     await db.commit()
-    return await _build_case_response(db, case_id, new_draft_id)
+    updated = await _build_case_response(db, case_id, new_draft_id)
+    await log_action(
+        db=db,
+        action="draft_create_version",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(new_draft_id),
+        details={"case_id": str(case_id), "version": updated.draft_version},
+        request=http_request,
+    )
+    return updated
 
 
 class DraftVersionListItem(BaseModel):
@@ -465,6 +502,8 @@ async def get_draft_version(
 async def export_draft(
     case_id: UUID,
     draft_id: UUID,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     format: str = Query(default="html", pattern="^(html|docx|pdf)$"),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -472,6 +511,15 @@ async def export_draft(
     draft_data = await _build_case_response(db, case_id, draft_id)
     title = draft_data.playbook_title or "draft"
     safe_title = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in title)
+    await log_action(
+        db=db,
+        action=f"draft_export_{format}",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(draft_id),
+        details={"case_id": str(case_id), "version": draft_data.draft_version},
+        request=http_request,
+    )
 
     if format == "html":
         html_body = (
@@ -546,6 +594,8 @@ def html_to_plain_text(html_text: str) -> str:
 async def revise_playbook_case(
     case_id: UUID,
     request: GenericRevisionRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Create a new draft version for a case with updated intake answers."""
@@ -609,7 +659,17 @@ async def revise_playbook_case(
             {"id": uuid4(), "draft_id": new_draft_id, "reviewer": "requester-revision", "reason": request.revision_note.strip()},
         )
     await db.commit()
-
+    updated = await _build_case_response(db, case_id, new_draft_id)
+    await log_action(
+        db=db,
+        action="case_revise",
+        user_id=current_user.id,
+        resource_type="case",
+        resource_id=str(case_id),
+        details={"new_draft_id": str(new_draft_id), "version": updated.draft_version},
+        request=http_request,
+    )
+    return updated
 
 
 async def _get_latest_playbook_row(key: str, db: AsyncSession) -> dict | None:
@@ -664,6 +724,8 @@ async def get_playbook(
 async def update_playbook(
     key: str,
     request: PlaybookUpdateRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Update the latest draft version of a playbook."""
@@ -717,12 +779,24 @@ async def update_playbook(
         updates,
     )
     await db.commit()
-    return PlaybookResponse(**dict(result.mappings().one()))
+    updated = result.mappings().one()
+    await log_action(
+        db=db,
+        action="playbook_update",
+        user_id=current_user.id,
+        resource_type="playbook",
+        resource_id=f"{updated['key']}:{updated['version']}",
+        details={"changed_fields": list(updates.keys()), "new_status": updated["status"]},
+        request=http_request,
+    )
+    return PlaybookResponse(**dict(updated))
 
 
 @router.post("/{key}/publish", response_model=PlaybookResponse)
 async def publish_playbook(
     key: str,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Publish or republish the latest version of a playbook."""
@@ -748,12 +822,24 @@ async def publish_playbook(
         {"id": row["id"]},
     )
     await db.commit()
-    return PlaybookResponse(**dict(result.mappings().one()))
+    updated = result.mappings().one()
+    await log_action(
+        db=db,
+        action="playbook_publish",
+        user_id=current_user.id,
+        resource_type="playbook",
+        resource_id=f"{updated['key']}:{updated['version']}",
+        details={"previous_status": row["status"], "new_status": updated["status"]},
+        request=http_request,
+    )
+    return PlaybookResponse(**dict(updated))
 
 
 @router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_playbook(
     key: str,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     version: str | None = Query(default=None, min_length=1, max_length=50),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
@@ -777,10 +863,27 @@ async def delete_playbook(
             {"id": row["id"]},
         )
         await db.commit()
+        await log_action(
+            db=db,
+            action="playbook_archive",
+            user_id=current_user.id,
+            resource_type="playbook",
+            resource_id=f"{row['key']}:{row['version']}",
+            details={"reason": "cases_referenced", "case_count": case_count},
+            request=http_request,
+        )
         return None
 
     await db.execute(text("DELETE FROM playbooks WHERE id = :id"), {"id": row["id"]})
     await db.commit()
+    await log_action(
+        db=db,
+        action="playbook_delete",
+        user_id=current_user.id,
+        resource_type="playbook",
+        resource_id=f"{row['key']}:{row['version']}",
+        request=http_request,
+    )
     return None
 
 
@@ -928,6 +1031,8 @@ async def revise_vendor_onboarding_draft(
 async def review_vendor_onboarding_draft(
     case_id: UUID,
     request: DraftReviewRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> DraftReviewResponse:
     """Approve, request changes to, or reject the latest pending case draft."""
@@ -987,6 +1092,15 @@ async def review_vendor_onboarding_draft(
         await db.rollback()
         raise HTTPException(status_code=500, detail="Could not save draft review decision") from exc
 
+    await log_action(
+        db=db,
+        action=f"draft_review_{request.decision}",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(row["draft_id"]),
+        details={"case_id": str(case_id), "reviewer": request.reviewer.strip()},
+        request=http_request,
+    )
     return DraftReviewResponse(
         case_id=str(row["case_id"]),
         draft_id=str(row["draft_id"]),
@@ -1002,11 +1116,22 @@ async def review_vendor_onboarding_draft(
 @router.post("/vendor-onboarding/draft", response_model=VendorOnboardingCaseResponse)
 async def draft_vendor_onboarding(
     request: VendorOnboardingRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> VendorOnboardingCaseResponse:
     """Run the generic playbook workflow for the legacy vendor onboarding playbook."""
     try:
         generic = await run_playbook_draft("vendor_onboarding", "1", request.model_dump(), db)
+        await log_action(
+            db=db,
+            action="playbook_run",
+            user_id=current_user.id,
+            resource_type="playbook",
+            resource_id="vendor_onboarding:1",
+            details={"case_id": generic.case_id, "draft_id": generic.draft_id, "vendor_name": request.vendor_name},
+            request=http_request,
+        )
         return VendorOnboardingCaseResponse(
             case_id=generic.case_id,
             draft_id=generic.draft_id,
@@ -1041,16 +1166,28 @@ async def draft_vendor_onboarding(
 @router.post("/draft", response_model=GenericDraftResponse)
 async def draft_generic_playbook(
     request: GenericDraftRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> GenericDraftResponse:
     """Run the generic playbook workflow for any published playbook."""
     try:
-        return await run_playbook_draft(
+        result = await run_playbook_draft(
             request.playbook_key,
             request.playbook_version,
             request.answers,
             db,
         )
+        await log_action(
+            db=db,
+            action="playbook_run",
+            user_id=current_user.id,
+            resource_type="playbook",
+            resource_id=f"{request.playbook_key}:{request.playbook_version}",
+            details={"case_id": result.case_id, "draft_id": result.draft_id},
+            request=http_request,
+        )
+        return result
     except PlaybookNotFound as exc:
         await db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc

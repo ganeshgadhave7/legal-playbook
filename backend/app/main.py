@@ -9,8 +9,9 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.session import engine
-from app.api.v1 import auth_router, playbooks_router, retrieval_router, source_documents_router
+from app.api.v1 import audit_router, auth_router, playbooks_router, retrieval_router, source_documents_router
 from app.db.session import SessionFactory
+from app.services.audit import log_action
 from app.services.auth import create_default_admin
 
 settings = get_settings()
@@ -39,6 +40,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(source_documents_router, prefix="/api/v1")
 app.include_router(retrieval_router, prefix="/api/v1")
 app.include_router(playbooks_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,6 +49,48 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def audit_request_middleware(request: Request, call_next):
+    """Log every incoming request and its outcome (success / HTTP error)."""
+    response = await call_next(request)
+    # Skip health checks and static files to keep logs useful.
+    if request.url.path in {"/health", "/docs", "/openapi.json"} or request.url.path.startswith("/static"):
+        return response
+
+    # Extract user id from the Authorization header if available.
+    user_id: str | None = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        from app.services.auth import decode_access_token
+        try:
+            payload = decode_access_token(auth_header.split(" ", 1)[1])
+            user_id = payload.get("sub")
+        except Exception:
+            user_id = None
+
+    try:
+        async with SessionFactory() as db:
+            await log_action(
+                db=db,
+                action="api_request",
+                user_id=user_id,
+                resource_type="endpoint",
+                resource_id=f"{request.method} {request.url.path}",
+                details={
+                    "method": request.method,
+                    "path": str(request.url.path),
+                    "query": str(request.url.query),
+                    "status_code": response.status_code,
+                },
+                success=response.status_code < 400,
+                request=request,
+            )
+    except Exception:
+        # Never break a request because audit logging failed.
+        pass
+    return response
 
 
 @app.exception_handler(Exception)
