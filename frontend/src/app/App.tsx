@@ -110,6 +110,7 @@ function App() {
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
   const [viewingVersion, setViewingVersion] = useState<PlaybookCase | null>(null);
+  const [exportFormat, setExportFormat] = useState<"html" | "docx" | "pdf">("html");
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -1285,15 +1286,19 @@ function App() {
                           <div className="review-actions">
                             {!isEditingDraft && (
                               <>
-                                <button className="button secondary" onClick={() => exportDraftFile(display, "html")}>
-                                  Export HTML
-                                </button>
-                                <button className="button secondary" onClick={() => exportDraftFile(display, "docx")}>
-                                  Export Word
-                                </button>
-                                <button className="button secondary" onClick={() => exportDraftFile(display, "pdf")}>
-                                  Export PDF
-                                </button>
+                                <div className="export-dropdown">
+                                  <select
+                                    value={exportFormat}
+                                    onChange={(e) => setExportFormat(e.target.value as "html" | "docx" | "pdf")}
+                                  >
+                                    <option value="html">Export as HTML</option>
+                                    <option value="docx">Export as Word</option>
+                                    <option value="pdf">Export as PDF</option>
+                                  </select>
+                                  <button className="button secondary" onClick={() => exportDraftFile(display, exportFormat)}>
+                                    Export
+                                  </button>
+                                </div>
                                 {isLatest && (
                                   <button className="button primary" onClick={startEditingDraft}>
                                     Edit draft
@@ -1315,6 +1320,47 @@ function App() {
                               </>
                             )}
                           </div>
+                          <div className="draft-section">
+                            <h3>Versions</h3>
+                            {draftVersions.length === 0 ? (
+                              <p className="muted">No version history available. Save a new version to create one.</p>
+                            ) : (
+                              <div className="version-table">
+                                <div className="table-head">
+                                  <span>VERSION</span>
+                                  <span>STATUS</span>
+                                  <span>CREATED</span>
+                                  <span>ACTION</span>
+                                </div>
+                                {draftVersions.map((v) => (
+                                  <div className={`table-row ${display.draft_id === v.draft_id ? "current" : ""}`} key={v.draft_id}>
+                                    <span>V{v.version}</span>
+                                    <span>{v.status.replaceAll("_", " ")}</span>
+                                    <span>{new Date(v.created_at).toLocaleString()}</span>
+                                    <span className="row-actions">
+                                      {display.draft_id === v.draft_id ? (
+                                        <span className="current-label">Viewing</span>
+                                      ) : (
+                                        <button
+                                          className="text-action"
+                                          onClick={async () => {
+                                            try {
+                                              const full = await getDraftVersion(selectedCase.case_id, v.draft_id);
+                                              setViewingVersion(full);
+                                            } catch (e) {
+                                              setError(e instanceof Error ? e.message : "Could not load version.");
+                                            }
+                                          }}
+                                        >
+                                          View
+                                        </button>
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <div className="disclaimer">{display.disclaimer}</div>
                           {isEditingDraft ? (
                             <div className="draft-section">
@@ -1326,39 +1372,6 @@ function App() {
                               dangerouslySetInnerHTML={{ __html: display.full_html }}
                             />
                           )}
-                          <div className="draft-section">
-                            <h3>Versions</h3>
-                            <div className="version-table">
-                              <div className="table-head">
-                                <span>VERSION</span>
-                                <span>STATUS</span>
-                                <span>CREATED</span>
-                                <span>ACTION</span>
-                              </div>
-                              {draftVersions.map((v) => (
-                                <div className="table-row" key={v.draft_id}>
-                                  <span>V{v.version}</span>
-                                  <span>{v.status.replaceAll("_", " ")}</span>
-                                  <span>{new Date(v.created_at).toLocaleString()}</span>
-                                  <span className="row-actions">
-                                    <button
-                                      className="text-action"
-                                      onClick={async () => {
-                                        try {
-                                          const full = await getDraftVersion(selectedCase.case_id, v.draft_id);
-                                          setViewingVersion(full);
-                                        } catch (e) {
-                                          setError(e instanceof Error ? e.message : "Could not load version.");
-                                        }
-                                      }}
-                                    >
-                                      View
-                                    </button>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
                           <div className="draft-section sources-section">
                             <h3>
                               Retrieved sources <span>{display.sources.length}</span>
