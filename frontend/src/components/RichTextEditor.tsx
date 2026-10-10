@@ -30,7 +30,6 @@ export function RichTextEditor({ value, onChange, height = 250, placeholder }: R
           "searchreplace",
           "visualblocks",
           "code",
-          "fullscreen",
           "insertdatetime",
           "media",
           "table",
