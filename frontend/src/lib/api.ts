@@ -226,6 +226,33 @@ export async function getDraftVersion(caseId: string, draftId: string): Promise<
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`));
 }
 
+export type AuditLog = {
+  id: string;
+  created_at: string;
+  user_id: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  success: boolean;
+  details: Record<string, unknown> | null;
+};
+
+export async function listAuditLogs(params?: {
+  limit?: number;
+  offset?: number;
+  action?: string;
+  resource_type?: string;
+}): Promise<{ items: AuditLog[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.action) query.set("action", params.action);
+  if (params?.resource_type) query.set("resource_type", params.resource_type);
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/audit-logs?${query.toString()}`));
+}
+
 export async function exportDraft(caseId: string, draftId: string, format: "html" | "docx" | "pdf"): Promise<Blob> {
   const response = await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}/export?format=${format}`);
   if (!response.ok) {

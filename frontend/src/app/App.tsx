@@ -19,7 +19,9 @@ import {
   listDraftVersions,
   getDraftVersion,
   exportDraft,
+  listAuditLogs,
   type DraftVersion,
+  type AuditLog,
   updatePlaybook,
   uploadDocument,
   type GenericDraft,
@@ -32,7 +34,7 @@ import {
   type UserResponse,
 } from "../lib/api";
 
-type Tab = "documents" | "intake" | "playbooks" | "drafts";
+type Tab = "documents" | "intake" | "playbooks" | "drafts" | "audit";
 
 const emptyQuestion = (): IntakeQuestion => ({
   key: "",
@@ -111,6 +113,12 @@ function App() {
   const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
   const [viewingVersion, setViewingVersion] = useState<PlaybookCase | null>(null);
   const [exportFormat, setExportFormat] = useState<"html" | "docx" | "pdf">("html");
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [auditActionFilter, setAuditActionFilter] = useState("");
+  const [auditResourceTypeFilter, setAuditResourceTypeFilter] = useState("");
+  const [auditLoading, setAuditLoading] = useState(false);
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -129,6 +137,22 @@ function App() {
     const result = await listPlaybookCases();
     setCases(result.items);
   }, []);
+
+  const refreshAuditLogs = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const result = await listAuditLogs({
+        limit: 50,
+        offset: auditOffset,
+        action: auditActionFilter || undefined,
+        resource_type: auditResourceTypeFilter || undefined,
+      });
+      setAuditLogs(result.items);
+      setAuditTotal(result.total);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditOffset, auditActionFilter, auditResourceTypeFilter]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -170,6 +194,12 @@ function App() {
         });
     }
   }, [tab, cases.length, selectedCase?.case_id]);
+
+  useEffect(() => {
+    if (tab === "audit") {
+      refreshAuditLogs();
+    }
+  }, [tab, refreshAuditLogs]);
 
   useEffect(() => {
     if (!token) return;
@@ -654,6 +684,9 @@ function App() {
         </button>
         <button className={`nav-item ${tab === "drafts" ? "active" : ""}`} onClick={() => setTab("drafts")}>
           <span className="nav-icon">🗀</span> Drafts
+        </button>
+        <button className={`nav-item ${tab === "audit" ? "active" : ""}`} onClick={() => setTab("audit")}>
+          <span className="nav-icon">📋</span> Audit logs
         </button>
         <div className="sidebar-bottom">
           <span className="fictional-chip">FICTIONAL DEMO</span>
@@ -1412,6 +1445,88 @@ function App() {
                   )}
                 </div>
               </div>
+            </>
+          )}
+
+          {tab === "audit" && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">ACTIVITY TRACKING</div>
+                  <h1>Audit logs</h1>
+                  <p>Review user actions, exports, and system events.</p>
+                </div>
+                <span className="count-pill">{auditTotal} EVENTS</span>
+              </div>
+              <div className="upload-card audit-filters">
+                <label>
+                  Action
+                  <input
+                    type="text"
+                    placeholder="e.g. login_success, draft_update"
+                    value={auditActionFilter}
+                    onChange={(e) => setAuditActionFilter(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Resource type
+                  <input
+                    type="text"
+                    placeholder="e.g. draft, playbook, source_document"
+                    value={auditResourceTypeFilter}
+                    onChange={(e) => setAuditResourceTypeFilter(e.target.value)}
+                  />
+                </label>
+                <button className="button secondary" onClick={refreshAuditLogs} disabled={auditLoading}>
+                  {auditLoading ? "Loading…" : "Filter"}
+                </button>
+              </div>
+              <div className="table-card">
+                <div className="table-head audit-head">
+                  <span>TIME</span>
+                  <span>USER</span>
+                  <span>ACTION</span>
+                  <span>RESOURCE</span>
+                  <span>STATUS</span>
+                  <span>DETAILS</span>
+                </div>
+                {auditLogs.length === 0 ? (
+                  <div className="empty-row">No audit events found.</div>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div className="table-row audit-row" key={log.id}>
+                      <span>{new Date(log.created_at).toLocaleString()}</span>
+                      <span className="mono">{log.user_id ? log.user_id.slice(0, 8) : "—"}</span>
+                      <span>{log.action}</span>
+                      <span>{log.resource_type ? `${log.resource_type}:${log.resource_id}` : "—"}</span>
+                      <span>
+                        <span className={`status-badge ${log.success ? "ready" : "failed"}`}>
+                          {log.success ? "Success" : "Failed"}
+                        </span>
+                      </span>
+                      <span className="mono small">{JSON.stringify(log.details).slice(0, 80)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              {auditTotal > 50 && (
+                <div className="review-actions">
+                  <button
+                    className="button secondary"
+                    disabled={auditOffset === 0}
+                    onClick={() => setAuditOffset((o) => Math.max(0, o - 50))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={auditOffset + 50 >= auditTotal}
+                    onClick={() => setAuditOffset((o) => o + 50)}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
 

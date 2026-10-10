@@ -36,6 +36,12 @@ def create_access_token(user_id: UUID, expires_delta: timedelta | None = None) -
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
 
+def decode_access_token(token: str) -> dict:
+    """Decode a JWT access token and return its payload."""
+    settings = get_settings()
+    return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+
+
 async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db_session),
