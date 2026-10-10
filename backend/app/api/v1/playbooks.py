@@ -1,4 +1,5 @@
 """Vendor Onboarding Playbook endpoints."""
+import html
 import json
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -208,6 +209,15 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         for row in sources_result.mappings()
     ]
 
+    def _to_html(value: str | list[str] | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if not value:
+            return ""
+        return "<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in value) + "</ul>"
+
     content = draft["content"] or {}
     return PlaybookCaseResponse(
         case_id=str(case["id"]),
@@ -221,10 +231,10 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         created_at=case["created_at"],
         disclaimer=draft["disclaimer"],
         summary=content.get("summary", ""),
-        checklist=content.get("checklist", []),
-        risk_indicators=content.get("risk_indicators", []),
-        missing_information=content.get("missing_information", []),
-        recommended_next_steps=content.get("recommended_next_steps", []),
+        checklist=_to_html(content.get("checklist")),
+        risk_indicators=_to_html(content.get("risk_indicators")),
+        missing_information=_to_html(content.get("missing_information")),
+        recommended_next_steps=_to_html(content.get("recommended_next_steps")),
         sources=sources,
     )
 

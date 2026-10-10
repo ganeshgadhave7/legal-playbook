@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { RichTextEditor } from "../components/RichTextEditor";
 import {
   checkHealth,
   createGenericDraft,
@@ -34,32 +35,6 @@ const emptyQuestion = (): IntakeQuestion => ({
   type: "text",
   required: true,
 });
-
-function EditableList({ items, onChange }: { items: string[]; onChange: (items: string[]) => void }) {
-  return (
-    <div className="editable-list">
-      {items.map((item, i) => (
-        <div className="editable-list-row" key={i}>
-          <input
-            type="text"
-            value={item}
-            onChange={(e) => {
-              const next = [...items];
-              next[i] = e.target.value;
-              onChange(next);
-            }}
-          />
-          <button type="button" className="button secondary" onClick={() => onChange(items.filter((_, idx) => idx !== i))}>
-            Remove
-          </button>
-        </div>
-      ))}
-      <button type="button" className="button secondary" onClick={() => onChange([...items, ""])}>
-        Add item
-      </button>
-    </div>
-  );
-}
 
 const initialPlaybookForm = {
   key: "",
@@ -279,22 +254,14 @@ function App() {
       });
     }, 1200);
     try {
-      let created: GenericDraft;
+      let caseId: string;
       if (editingCaseId) {
         const revised = await revisePlaybookCase(editingCaseId, answers, "Intake answers updated by user");
-        created = {
-          ...revised,
-          case_id: revised.case_id,
-          draft_id: revised.draft_id,
-          playbook_key: revised.playbook_key,
-          playbook_version: revised.playbook_version,
-          case_status: revised.case_status,
-          draft_status: revised.draft_status,
-          created_at: revised.created_at,
-        };
+        caseId = revised.case_id;
         setEditingCaseId(null);
       } else {
-        created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
+        const created = await createGenericDraft(selectedPlaybook.key, selectedPlaybook.version, answers);
+        caseId = created.case_id;
       }
       await refreshCases();
       setLastSubmittedAnswers({ ...answers });
@@ -303,7 +270,7 @@ function App() {
       window.clearInterval(statusInterval);
       // Redirect to drafts tab and select the new case
       setTab("drafts");
-      const fullCase = await getPlaybookCase(created.case_id);
+      const fullCase = await getPlaybookCase(caseId);
       setSelectedCase(fullCase);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create draft.");
@@ -342,10 +309,10 @@ function App() {
     if (!selectedCase) return;
     setDraftEditForm({
       summary: selectedCase.summary,
-      checklist: [...selectedCase.checklist],
-      risk_indicators: [...selectedCase.risk_indicators],
-      missing_information: [...selectedCase.missing_information],
-      recommended_next_steps: [...selectedCase.recommended_next_steps],
+      checklist: selectedCase.checklist,
+      risk_indicators: selectedCase.risk_indicators,
+      missing_information: selectedCase.missing_information,
+      recommended_next_steps: selectedCase.recommended_next_steps,
     });
     setIsEditingDraft(true);
   }
@@ -357,29 +324,6 @@ function App() {
 
   function updateDraftField<K extends keyof typeof draftEditForm>(field: K, value: (typeof draftEditForm)[K]) {
     setDraftEditForm((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateDraftListField(field: keyof typeof draftEditForm, index: number, value: string) {
-    setDraftEditForm((current) => {
-      const list = [...((current[field] as string[]) || [])];
-      list[index] = value;
-      return { ...current, [field]: list };
-    });
-  }
-
-  function removeDraftListItem(field: keyof typeof draftEditForm, index: number) {
-    setDraftEditForm((current) => {
-      const list = [...((current[field] as string[]) || [])];
-      list.splice(index, 1);
-      return { ...current, [field]: list };
-    });
-  }
-
-  function addDraftListItem(field: keyof typeof draftEditForm) {
-    setDraftEditForm((current) => ({
-      ...current,
-      [field]: [...((current[field] as string[]) || []), ""],
-    }));
   }
 
   async function saveDraftChanges() {
@@ -1322,74 +1266,76 @@ function App() {
                       <div className="draft-section">
                         <h3>Summary</h3>
                         {isEditingDraft ? (
-                          <textarea
-                            className="edit-textarea"
-                            rows={4}
+                          <RichTextEditor
                             value={draftEditForm.summary ?? ""}
-                            onChange={(e) => updateDraftField("summary", e.target.value)}
+                            onChange={(value) => updateDraftField("summary", value)}
+                            height={180}
                           />
                         ) : (
-                          <p>{selectedCase.summary}</p>
+                          <div
+                            className="rich-content"
+                            dangerouslySetInnerHTML={{ __html: selectedCase.summary }}
+                          />
                         )}
                       </div>
                       <div className="draft-section">
                         <h3>Checklist</h3>
                         {isEditingDraft ? (
-                          <EditableList
-                            items={draftEditForm.checklist || []}
-                            onChange={(items) => updateDraftField("checklist", items)}
+                          <RichTextEditor
+                            value={draftEditForm.checklist ?? ""}
+                            onChange={(value) => updateDraftField("checklist", value)}
+                            height={220}
                           />
                         ) : (
-                          <ul>
-                            {selectedCase.checklist.map((item, i) => (
-                              <li key={i}>{item}</li>
-                            ))}
-                          </ul>
+                          <div
+                            className="rich-content"
+                            dangerouslySetInnerHTML={{ __html: selectedCase.checklist }}
+                          />
                         )}
                       </div>
                       <div className="draft-section">
                         <h3>Risk indicators</h3>
                         {isEditingDraft ? (
-                          <EditableList
-                            items={draftEditForm.risk_indicators || []}
-                            onChange={(items) => updateDraftField("risk_indicators", items)}
+                          <RichTextEditor
+                            value={draftEditForm.risk_indicators ?? ""}
+                            onChange={(value) => updateDraftField("risk_indicators", value)}
+                            height={220}
                           />
                         ) : (
-                          <ul className="risk-list">
-                            {selectedCase.risk_indicators.map((item, i) => (
-                              <li key={i}>{item}</li>
-                            ))}
-                          </ul>
+                          <div
+                            className="rich-content"
+                            dangerouslySetInnerHTML={{ __html: selectedCase.risk_indicators }}
+                          />
                         )}
                       </div>
                       <div className="draft-section">
                         <h3>Missing information</h3>
                         {isEditingDraft ? (
-                          <EditableList
-                            items={draftEditForm.missing_information || []}
-                            onChange={(items) => updateDraftField("missing_information", items)}
+                          <RichTextEditor
+                            value={draftEditForm.missing_information ?? ""}
+                            onChange={(value) => updateDraftField("missing_information", value)}
+                            height={220}
                           />
                         ) : (
-                          <ul>
-                            {selectedCase.missing_information.map((item, i) => (
-                              <li key={i}>{item}</li>
-                            ))}
-                          </ul>
+                          <div
+                            className="rich-content"
+                            dangerouslySetInnerHTML={{ __html: selectedCase.missing_information }}
+                          />
                         )}
                       </div>
                       <div className="draft-section">
                         <h3>Recommended next steps</h3>
                         {isEditingDraft ? (
-                          <EditableList
-                            items={draftEditForm.recommended_next_steps || []}
-                            onChange={(items) => updateDraftField("recommended_next_steps", items)}
+                          <RichTextEditor
+                            value={draftEditForm.recommended_next_steps ?? ""}
+                            onChange={(value) => updateDraftField("recommended_next_steps", value)}
+                            height={220}
                           />
                         ) : (
-                          <ul>
-                            {selectedCase.recommended_next_steps.map((item, i) => (
-                              <li key={i}>{item}</li>
-                            ))}
-                          </ul>
+                          <div
+                            className="rich-content"
+                            dangerouslySetInnerHTML={{ __html: selectedCase.recommended_next_steps }}
+                          />
                         )}
                       </div>
                       <div className="draft-section sources-section">

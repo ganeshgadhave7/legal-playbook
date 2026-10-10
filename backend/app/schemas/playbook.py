@@ -216,10 +216,10 @@ class PlaybookCaseResponse(BaseModel):
     created_at: datetime
     disclaimer: str
     summary: str
-    checklist: list[str]
-    risk_indicators: list[str]
-    missing_information: list[str]
-    recommended_next_steps: list[str]
+    checklist: str
+    risk_indicators: str
+    missing_information: str
+    recommended_next_steps: str
     sources: list[PlaybookSource]
 
 
@@ -229,8 +229,8 @@ class GenericRevisionRequest(BaseModel):
 
 
 class DraftContentUpdate(BaseModel):
-    summary: str | None = Field(default=None, max_length=5000)
-    checklist: list[str] | None = None
-    risk_indicators: list[str] | None = None
-    missing_information: list[str] | None = None
-    recommended_next_steps: list[str] | None = None
+    summary: str | None = Field(default=None, max_length=8000)
+    checklist: str | None = Field(default=None, max_length=20000)
+    risk_indicators: str | None = Field(default=None, max_length=20000)
+    missing_information: str | None = Field(default=None, max_length=20000)
+    recommended_next_steps: str | None = Field(default=None, max_length=20000)

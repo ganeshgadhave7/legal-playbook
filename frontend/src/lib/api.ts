@@ -185,10 +185,10 @@ export type PlaybookCase = {
   created_at: string;
   disclaimer: string;
   summary: string;
-  checklist: string[];
-  risk_indicators: string[];
-  missing_information: string[];
-  recommended_next_steps: string[];
+  checklist: string;
+  risk_indicators: string;
+  missing_information: string;
+  recommended_next_steps: string;
   sources: PlaybookSource[];
 };
 
