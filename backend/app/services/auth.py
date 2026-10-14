@@ -73,6 +73,26 @@ async def require_user(user: User | None = Depends(get_current_user)) -> User:
     return user
 
 
+# Role-based access helpers
+ROLES = ["admin", "editor", "user", "viewer"]
+
+
+def _require_role(*allowed: str):
+    async def checker(user: User = Depends(require_user)) -> User:
+        if user.role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of roles: {', '.join(allowed)}",
+            )
+        return user
+    return checker
+
+
+require_admin = _require_role("admin")
+require_editor = _require_role("admin", "editor")
+require_user_or_above = _require_role("admin", "editor", "user")
+
+
 async def create_default_admin(db: AsyncSession) -> User | None:
     """Create the default admin user if no users exist."""
     settings = get_settings()
@@ -85,6 +105,7 @@ async def create_default_admin(db: AsyncSession) -> User | None:
         hashed_password=get_password_hash(settings.default_admin_password),
         is_active=True,
         is_superuser=True,
+        role="admin",
     )
     db.add(admin)
     await db.commit()

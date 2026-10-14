@@ -8,10 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
-from app.models.user import User
-from app.services.auth import require_user
+from app.services.auth import require_admin
 
-router = APIRouter(prefix="/audit-logs", tags=["audit"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/audit-logs", tags=["audit"], dependencies=[Depends(require_admin)])
 
 
 class AuditLogItem(BaseModel):
@@ -41,9 +40,8 @@ async def list_audit_logs(
     resource_type: str | None = Query(default=None),
     user_id: UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(require_user),
 ) -> AuditLogListResponse:
-    """List audit log entries. Admin-only in a full RBAC system; currently available to all authenticated users."""
+    """List audit log entries. Admin-only."""
     # Build dynamic filters
     conditions = []
     params: dict[str, object] = {"limit": limit, "offset": offset}

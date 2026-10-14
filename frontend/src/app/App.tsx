@@ -20,6 +20,9 @@ import {
   getDraftVersion,
   exportDraft,
   listAuditLogs,
+  listUsers,
+  createUser,
+  updateUser,
   type DraftVersion,
   type AuditLog,
   updatePlaybook,
@@ -34,7 +37,7 @@ import {
   type UserResponse,
 } from "../lib/api";
 
-type Tab = "documents" | "intake" | "playbooks" | "drafts" | "audit";
+type Tab = "documents" | "intake" | "playbooks" | "drafts" | "audit" | "users";
 
 const emptyQuestion = (): IntakeQuestion => ({
   key: "",
@@ -77,6 +80,9 @@ function App() {
     return saved;
   });
   const [user, setUser] = useState<UserResponse | null>(null);
+  const isAdmin = user?.role === "admin";
+  const isEditor = user?.role === "admin" || user?.role === "editor";
+  const isUserPlus = user?.role === "admin" || user?.role === "editor" || user?.role === "user";
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
@@ -122,6 +128,11 @@ function App() {
   const [auditPendingResourceType, setAuditPendingResourceType] = useState("");
   const [auditShowRequests, setAuditShowRequests] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState<UserResponse["role"]>("user");
 
   const refreshDocuments = useCallback(async () => {
     const result = await listDocuments();
@@ -204,6 +215,12 @@ function App() {
       refreshAuditLogs();
     }
   }, [tab, auditOffset]);
+
+  useEffect(() => {
+    if (tab === "users" && isAdmin) {
+      listUsers().then((result) => setUsers(result.items)).catch((e) => setError(e instanceof Error ? e.message : "Could not load users."));
+    }
+  }, [tab, isAdmin]);
 
   useEffect(() => {
     if (!token) return;
@@ -683,15 +700,26 @@ function App() {
         <button className={`nav-item ${tab === "playbooks" ? "active" : ""}`} onClick={() => setTab("playbooks")}>
           <span className="nav-icon">⚙</span> Playbooks
         </button>
-        <button className={`nav-item ${tab === "intake" ? "active" : ""}`} onClick={() => setTab("intake")}>
-          <span className="nav-icon">✳</span> Run playbook
-        </button>
-        <button className={`nav-item ${tab === "drafts" ? "active" : ""}`} onClick={() => setTab("drafts")}>
-          <span className="nav-icon">🗀</span> Drafts
-        </button>
-        <button className={`nav-item ${tab === "audit" ? "active" : ""}`} onClick={() => setTab("audit")}>
-          <span className="nav-icon">📋</span> Audit logs
-        </button>
+        {isUserPlus && (
+          <button className={`nav-item ${tab === "intake" ? "active" : ""}`} onClick={() => setTab("intake")}>
+            <span className="nav-icon">✳</span> Run playbook
+          </button>
+        )}
+        {isUserPlus && (
+          <button className={`nav-item ${tab === "drafts" ? "active" : ""}`} onClick={() => setTab("drafts")}>
+            <span className="nav-icon">🗀</span> Drafts
+          </button>
+        )}
+        {isAdmin && (
+          <button className={`nav-item ${tab === "audit" ? "active" : ""}`} onClick={() => setTab("audit")}>
+            <span className="nav-icon">📋</span> Audit logs
+          </button>
+        )}
+        {isAdmin && (
+          <button className={`nav-item ${tab === "users" ? "active" : ""}`} onClick={() => setTab("users")}>
+            <span className="nav-icon">👤</span> Users
+          </button>
+        )}
         <div className="sidebar-bottom">
           <span className="fictional-chip">FICTIONAL DEMO</span>
           <span className="side-footnote">Acme Technologies LLC</span>
@@ -753,13 +781,15 @@ function App() {
                 </div>
               </div>
 
-              <div className="section-heading">
-                <div>
-                  <h2>Upload source</h2>
-                  <p>DOCX only · 10 MB maximum · approval required before indexing</p>
-                </div>
-              </div>
-              <form className="upload-card" onSubmit={handleUpload}>
+              {isEditor && (
+                <>
+                  <div className="section-heading">
+                    <div>
+                      <h2>Upload source</h2>
+                      <p>DOCX only · 10 MB maximum · approval required before indexing</p>
+                    </div>
+                  </div>
+                  <form className="upload-card" onSubmit={handleUpload}>
                 <div className="upload-metadata-grid">
                   <label className="upload-title-field">
                     Document title
@@ -843,6 +873,8 @@ function App() {
                   </button>
                 </div>
               </form>
+                </>
+              )}
 
               <div className="section-heading list-heading">
                 <div>
@@ -884,7 +916,7 @@ function App() {
                         <b className={`status-badge ${doc.status}`}>{doc.status.replaceAll("_", " ")}</b>
                       </span>
                       <span className="row-actions">
-                        {doc.status === "uploaded" || doc.status === "pending_review" ? (
+                        {isEditor && (doc.status === "uploaded" || doc.status === "pending_review") ? (
                           <>
                             <button className="text-action approve" disabled={busy} onClick={() => handleDecision(doc, "approved")}>
                               Approve & index
@@ -914,9 +946,11 @@ function App() {
                   <h1>Playbooks</h1>
                   <p>Create and publish reusable playbook definitions.</p>
                 </div>
-                <button className="button primary" onClick={handleNewPlaybook} disabled={busy}>
-                  {showPlaybookForm ? "Cancel" : "New playbook"}
-                </button>
+                {isEditor && (
+                  <button className="button primary" onClick={handleNewPlaybook} disabled={busy}>
+                    {showPlaybookForm ? "Cancel" : "New playbook"}
+                  </button>
+                )}
               </div>
 
               {showPlaybookForm && (
@@ -1090,7 +1124,7 @@ function App() {
                         <button className="text-action" disabled={busy} onClick={() => viewPlaybook(p)}>
                           View
                         </button>
-                        {p.status === "draft" && (
+                        {isEditor && p.status === "draft" && (
                           <>
                             <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
                               Publish
@@ -1100,7 +1134,7 @@ function App() {
                             </button>
                           </>
                         )}
-                        {p.status === "archived" && (
+                        {isEditor && p.status === "archived" && (
                           <button className="text-action approve" disabled={busy} onClick={() => handlePublishPlaybook(p.key)}>
                             Republish
                           </button>
@@ -1551,6 +1585,104 @@ function App() {
                   </button>
                 </div>
               )}
+            </>
+          )}
+
+          {tab === "users" && isAdmin && (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="eyebrow">USER MANAGEMENT</div>
+                  <h1>Users</h1>
+                  <p>Create and manage team members and their roles.</p>
+                </div>
+                <button className="button primary" onClick={() => setShowUserForm(true)}>
+                  + Add user
+                </button>
+              </div>
+              {showUserForm && (
+                <div className="upload-card user-form">
+                  <label>
+                    Email
+                    <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
+                  </label>
+                  <label>
+                    Password
+                    <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
+                  </label>
+                  <label>
+                    Role
+                    <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as UserResponse["role"])}>
+                      <option value="admin">Admin</option>
+                      <option value="editor">Editor</option>
+                      <option value="user">User</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </label>
+                  <div className="review-actions">
+                    <button className="button secondary" onClick={() => setShowUserForm(false)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="button primary"
+                      onClick={async () => {
+                        try {
+                          await createUser({ email: newUserEmail, password: newUserPassword, role: newUserRole });
+                          setSuccess("User created.");
+                          setShowUserForm(false);
+                          setNewUserEmail("");
+                          setNewUserPassword("");
+                          setNewUserRole("user");
+                          const result = await listUsers();
+                          setUsers(result.items);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "Could not create user.");
+                        }
+                      }}
+                    >
+                      Create
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="table-card">
+                <div className="table-head user-head">
+                  <span>EMAIL</span>
+                  <span>ROLE</span>
+                  <span>STATUS</span>
+                  <span>ACTION</span>
+                </div>
+                {users.map((u) => (
+                  <div className="table-row user-row" key={u.id}>
+                    <span>{u.email}</span>
+                    <span>{u.role}</span>
+                    <span>
+                      <span className={`status-badge ${u.is_active ? "ready" : "failed"}`}>
+                        {u.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </span>
+                    <span className="row-actions">
+                      {u.id !== user?.id && (
+                        <button
+                          className="text-action"
+                          onClick={async () => {
+                            try {
+                              await updateUser(u.id, { is_active: !u.is_active });
+                              setSuccess(`User ${u.is_active ? "deactivated" : "activated"}.`);
+                              const result = await listUsers();
+                              setUsers(result.items);
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Could not update user.");
+                            }
+                          }}
+                        >
+                          {u.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 

@@ -47,9 +47,9 @@ from app.workflows.playbook_draft import (
     run_playbook_draft,
 )
 from app.workflows.vendor_onboarding import DISCLAIMER, run_vendor_onboarding
-from app.services.auth import require_user
+from app.services.auth import require_admin, require_editor, require_user_or_above
 
-router = APIRouter(prefix="/playbooks", tags=["playbooks"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/playbooks", tags=["playbooks"], dependencies=[Depends(require_user_or_above)])
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ async def list_playbooks(
 async def create_playbook(
     request: PlaybookCreateRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Create a new playbook draft."""
@@ -346,7 +346,7 @@ async def update_draft_content(
     draft_id: UUID,
     request: DraftContentUpdate,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Update the editable content of a draft."""
@@ -385,7 +385,7 @@ async def create_draft_version(
     case_id: UUID,
     request: DraftContentUpdate,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Create a new draft version for a case with the provided content."""
@@ -503,7 +503,7 @@ async def export_draft(
     case_id: UUID,
     draft_id: UUID,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     format: str = Query(default="html", pattern="^(html|docx|pdf)$"),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -595,7 +595,7 @@ async def revise_playbook_case(
     case_id: UUID,
     request: GenericRevisionRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Create a new draft version for a case with updated intake answers."""
@@ -725,7 +725,7 @@ async def update_playbook(
     key: str,
     request: PlaybookUpdateRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Update the latest draft version of a playbook."""
@@ -796,7 +796,7 @@ async def update_playbook(
 async def publish_playbook(
     key: str,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookResponse:
     """Publish or republish the latest version of a playbook."""
@@ -839,7 +839,7 @@ async def publish_playbook(
 async def delete_playbook(
     key: str,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     version: str | None = Query(default=None, min_length=1, max_length=50),
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
@@ -1032,7 +1032,7 @@ async def review_vendor_onboarding_draft(
     case_id: UUID,
     request: DraftReviewRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db_session),
 ) -> DraftReviewResponse:
     """Approve, request changes to, or reject the latest pending case draft."""
@@ -1117,7 +1117,7 @@ async def review_vendor_onboarding_draft(
 async def draft_vendor_onboarding(
     request: VendorOnboardingRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     db: AsyncSession = Depends(get_db_session),
 ) -> VendorOnboardingCaseResponse:
     """Run the generic playbook workflow for the legacy vendor onboarding playbook."""
@@ -1167,7 +1167,7 @@ async def draft_vendor_onboarding(
 async def draft_generic_playbook(
     request: GenericDraftRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_user_or_above),
     db: AsyncSession = Depends(get_db_session),
 ) -> GenericDraftResponse:
     """Run the generic playbook workflow for any published playbook."""

@@ -22,5 +22,6 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa.text("true"))
     is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa.text("false"))
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="user", server_default=sa.text("'user'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

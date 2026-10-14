@@ -23,7 +23,7 @@ from app.schemas.source_document import (
 from app.services.audit import log_action
 from app.services.chunking import chunk_blocks
 from app.services.docx_extractor import extract_docx_bytes
-from app.services.auth import require_user
+from app.services.auth import require_editor, require_user, require_user_or_above
 from app.services.local_file_storage import LocalFileStorage
 from app.services.usage_budget import (
     UsageBudgetExceeded,
@@ -60,6 +60,7 @@ async def list_source_documents(
     status_filter: str | None = Query(default=None, alias="status"),
     department: str | None = Query(default=None, min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(require_user_or_above),
 ) -> SourceDocumentListResponse:
     """List uploaded document metadata; never returns private storage keys or text."""
     allowed_statuses = {
@@ -119,7 +120,7 @@ async def decide_source_document(
     document_id: UUID,
     request: SourceDocumentDecisionRequest,
     http_request: Request,
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db_session),
 ) -> SourceDocumentResponse:
     """Record an approver decision; approved documents become eligible for indexing."""
@@ -293,7 +294,7 @@ async def upload_source_document(
     document_code: str | None = Form(default=None),
     fictional: bool = Form(default=True),
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_editor),
 ) -> SourceDocumentResponse:
     """Validate, extract, store, and register a DOCX in `uploaded` state."""
     original_filename = Path(file.filename or "upload.docx").name

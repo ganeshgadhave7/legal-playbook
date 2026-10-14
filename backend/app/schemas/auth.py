@@ -21,3 +21,20 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     is_superuser: bool
+    role: str
+
+
+class UserCreateRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=254)
+    password: str = Field(..., min_length=8)
+    role: str = Field(default="user", pattern="^(admin|editor|user|viewer)$")
+
+
+class UserUpdateRequest(BaseModel):
+    role: str | None = Field(default=None, pattern="^(admin|editor|user|viewer)$")
+    is_active: bool | None = None
+
+
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int

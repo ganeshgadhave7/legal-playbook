@@ -12,7 +12,7 @@ export function getAuthToken(): string | null {
 
 export type SourceDocument = { id: string; title: string; department: string; document_type: string; document_code: string | null; version: string; status: string; original_filename: string; mime_type: string; file_size_bytes: number; sha256: string; fictional: boolean; created_at: string };
 export type SourceDocumentList = { items: SourceDocument[]; limit: number; offset: number; total: number };
-export type UserResponse = { id: string; email: string; is_active: boolean; is_superuser: boolean };
+export type UserResponse = { id: string; email: string; is_active: boolean; is_superuser: boolean; role: "admin" | "editor" | "user" | "viewer" };
 export type TokenResponse = { access_token: string; token_type: string };
 export type SourceDocumentUploadMetadata = {
   title: string;
@@ -238,6 +238,21 @@ export type AuditLog = {
   success: boolean;
   details: Record<string, unknown> | null;
 };
+
+export type UserCreateRequest = { email: string; password: string; role: "admin" | "editor" | "user" | "viewer" };
+export type UserUpdateRequest = { role?: "admin" | "editor" | "user" | "viewer"; is_active?: boolean };
+
+export async function listUsers(): Promise<{ items: UserResponse[]; total: number }> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/auth/users`));
+}
+
+export async function createUser(request: UserCreateRequest): Promise<UserResponse> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/auth/users`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) }));
+}
+
+export async function updateUser(userId: string, request: UserUpdateRequest): Promise<UserResponse> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/auth/users/${userId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) }));
+}
 
 export async function listAuditLogs(params?: {
   limit?: number;
