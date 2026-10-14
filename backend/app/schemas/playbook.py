@@ -223,6 +223,7 @@ class PlaybookCaseResponse(BaseModel):
     missing_information: str
     recommended_next_steps: str
     full_html: str
+    review_feedback: str | None = None
     sources: list[PlaybookSource]
 
 
@@ -233,3 +234,12 @@ class GenericRevisionRequest(BaseModel):
 
 class DraftContentUpdate(BaseModel):
     full_html: str | None = Field(default=None, max_length=100000)
+
+
+class DraftReviewRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|changes_requested|rejected)$")
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class DraftSubmitRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)

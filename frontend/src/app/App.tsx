@@ -19,6 +19,8 @@ import {
   listDraftVersions,
   getDraftVersion,
   exportDraft,
+  submitDraftForReview,
+  reviewDraft,
   listAuditLogs,
   listUsers,
   createUser,
@@ -119,6 +121,9 @@ function App() {
   const [draftVersions, setDraftVersions] = useState<DraftVersion[]>([]);
   const [viewingVersion, setViewingVersion] = useState<PlaybookCase | null>(null);
   const [exportFormat, setExportFormat] = useState<"html" | "docx" | "pdf">("html");
+  const [submitNote, setSubmitNote] = useState("");
+  const [reviewDecision, setReviewDecision] = useState<"approved" | "changes_requested" | "rejected">("approved");
+  const [reviewReason, setReviewReason] = useState("");
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditOffset, setAuditOffset] = useState(0);
@@ -1395,10 +1400,64 @@ function App() {
                                     Export
                                   </button>
                                 </div>
-                                {isLatest && (
+                                {isLatest && isUserPlus && display.draft_status !== "pending_review" && display.draft_status !== "approved" && (
                                   <button className="button primary" onClick={startEditingDraft}>
                                     Edit draft
                                   </button>
+                                )}
+                                {isLatest && isUserPlus && (display.draft_status === "draft_pending_review" || display.draft_status === "changes_requested") && (
+                                  <button
+                                    className="button primary"
+                                    onClick={async () => {
+                                      try {
+                                        const updated = await submitDraftForReview(display.case_id, display.draft_id, submitNote);
+                                        setSelectedCase(updated);
+                                        setSubmitNote("");
+                                        setSuccess("Draft submitted for review.");
+                                        await refreshCases();
+                                      } catch (e) {
+                                        setError(e instanceof Error ? e.message : "Could not submit draft.");
+                                      }
+                                    }}
+                                  >
+                                    Submit for review
+                                  </button>
+                                )}
+                                {isLatest && isEditor && (display.draft_status === "pending_review" || display.draft_status === "changes_requested") && (
+                                  <>
+                                    <select
+                                      className="review-decision"
+                                      value={reviewDecision}
+                                      onChange={(e) => setReviewDecision(e.target.value as "approved" | "changes_requested" | "rejected")}
+                                    >
+                                      <option value="approved">Approve</option>
+                                      <option value="changes_requested">Request changes</option>
+                                      <option value="rejected">Reject</option>
+                                    </select>
+                                    <input
+                                      type="text"
+                                      placeholder="Review note (optional)"
+                                      value={reviewReason}
+                                      onChange={(e) => setReviewReason(e.target.value)}
+                                      className="review-reason"
+                                    />
+                                    <button
+                                      className="button primary"
+                                      onClick={async () => {
+                                        try {
+                                          const updated = await reviewDraft(display.case_id, display.draft_id, reviewDecision, reviewReason);
+                                          setSelectedCase(updated);
+                                          setReviewReason("");
+                                          setSuccess(`Draft ${reviewDecision.replaceAll("_", " ")}.`);
+                                          await refreshCases();
+                                        } catch (e) {
+                                          setError(e instanceof Error ? e.message : "Could not review draft.");
+                                        }
+                                      }}
+                                    >
+                                      Review
+                                    </button>
+                                  </>
                                 )}
                               </>
                             )}
@@ -1458,6 +1517,12 @@ function App() {
                             )}
                           </div>
                           <div className="disclaimer">{display.disclaimer}</div>
+                          {display.review_feedback && (
+                            <div className="review-feedback">
+                              <strong>Review feedback</strong>
+                              <p>{display.review_feedback}</p>
+                            </div>
+                          )}
                           {isEditingDraft ? (
                             <div className="draft-section">
                               <RichTextEditor value={draftHtml} onChange={setDraftHtml} height={500} />

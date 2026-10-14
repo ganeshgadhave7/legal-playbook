@@ -191,6 +191,7 @@ export type PlaybookCase = {
   missing_information: string;
   recommended_next_steps: string;
   full_html: string;
+  review_feedback: string | null;
   sources: PlaybookSource[];
 };
 
@@ -210,6 +211,14 @@ export async function revisePlaybookCase(caseId: string, answers: Record<string,
 
 export async function updateDraft(caseId: string, draftId: string, fullHtml: string): Promise<PlaybookCase> {
   return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_html: fullHtml }) }));
+}
+
+export async function submitDraftForReview(caseId: string, draftId: string, note = ""): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }) }));
+}
+
+export async function reviewDraft(caseId: string, draftId: string, decision: "approved" | "changes_requested" | "rejected", reason = ""): Promise<PlaybookCase> {
+  return parseResponse(await fetchApi(`${API_BASE}/api/v1/playbooks/cases/${caseId}/drafts/${draftId}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, reason }) }));
 }
 
 export async function createDraftVersion(caseId: string, fullHtml: string): Promise<PlaybookCase> {

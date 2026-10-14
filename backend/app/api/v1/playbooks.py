@@ -19,6 +19,8 @@ from app.db.session import get_db_session
 from app.models.user import User
 from app.schemas.playbook import (
     DraftContentUpdate,
+    DraftReviewRequest,
+    DraftSubmitRequest,
     GenericDraftRequest,
     GenericDraftResponse,
     GenericRevisionRequest,
@@ -176,6 +178,20 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         {"case_id": case_id},
     )
     case = case_result.mappings().first()
+
+    review_feedback_result = await db.execute(
+        text(
+            """
+            SELECT reason FROM draft_reviews
+            WHERE draft_id = (SELECT id FROM drafts WHERE case_id = :case_id ORDER BY version DESC LIMIT 1)
+            AND decision = 'changes_requested'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"case_id": case_id},
+    )
+    review_feedback = review_feedback_result.scalar_one_or_none()
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
@@ -271,6 +287,7 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         missing_information=missing_information,
         recommended_next_steps=recommended_next_steps,
         full_html=full_html,
+        review_feedback=review_feedback,
         sources=sources,
     )
 
@@ -363,8 +380,12 @@ async def update_draft_content(
         content["full_html"] = request.full_html
 
     await db.execute(
-        text("UPDATE drafts SET content = CAST(:content AS jsonb), updated_at = now() WHERE id = :draft_id"),
+        text("UPDATE drafts SET content = CAST(:content AS jsonb), status = 'draft_pending_review', updated_at = now() WHERE id = :draft_id"),
         {"draft_id": draft_id, "content": json.dumps(content)},
+    )
+    await db.execute(
+        text("UPDATE cases SET status = 'draft_pending_review', updated_at = now() WHERE id = :case_id"),
+        {"case_id": case_id},
     )
     await db.commit()
     updated = await _build_case_response(db, case_id, draft_id)
@@ -412,7 +433,7 @@ async def create_draft_version(
         text(
             """
             INSERT INTO drafts (id, case_id, version, status, content, disclaimer)
-            VALUES (:id, :case_id, :version, 'pending_review', CAST(:content AS jsonb), :disclaimer)
+            VALUES (:id, :case_id, :version, 'draft_pending_review', CAST(:content AS jsonb), :disclaimer)
             """
         ),
         {
@@ -435,6 +456,10 @@ async def create_draft_version(
             """
         ),
         {"new_draft_id": new_draft_id, "old_draft_id": latest_draft["id"]},
+    )
+    await db.execute(
+        text("UPDATE cases SET status = 'draft_pending_review', updated_at = now() WHERE id = :case_id"),
+        {"case_id": case_id},
     )
 
     await db.commit()
@@ -588,6 +613,111 @@ def html_to_plain_text(html_text: str) -> str:
     # Remove any remaining tags.
     text = re.sub(r"<[^>]+>", "", text)
     return text.strip()
+
+
+@router.post("/cases/{case_id}/drafts/{draft_id}/submit", response_model=PlaybookCaseResponse)
+async def submit_draft_for_review(
+    case_id: UUID,
+    draft_id: UUID,
+    request: DraftSubmitRequest,
+    http_request: Request,
+    current_user: User = Depends(require_user_or_above),
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Submit a draft version for editor review."""
+    draft_result = await db.execute(
+        text("SELECT id, status FROM drafts WHERE id = :draft_id AND case_id = :case_id FOR UPDATE"),
+        {"draft_id": draft_id, "case_id": case_id},
+    )
+    draft = draft_result.mappings().first()
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["status"] not in {"draft_pending_review", "changes_requested"}:
+        raise HTTPException(status_code=409, detail=f"Cannot submit draft in status '{draft['status']}'")
+
+    await db.execute(
+        text("UPDATE drafts SET status = 'pending_review', updated_at = now() WHERE id = :draft_id"),
+        {"draft_id": draft_id},
+    )
+    await db.execute(
+        text("UPDATE cases SET status = 'pending_review', updated_at = now() WHERE id = :case_id"),
+        {"case_id": case_id},
+    )
+    if request.note:
+        await db.execute(
+            text(
+                "INSERT INTO draft_reviews (id, draft_id, reviewer, decision, reason) VALUES (:id, :draft_id, :reviewer, 'changes_requested', :reason)"
+            ),
+            {"id": uuid4(), "draft_id": draft_id, "reviewer": f"requester-{current_user.email}", "reason": request.note.strip()},
+        )
+    await db.commit()
+    updated = await _build_case_response(db, case_id, draft_id)
+    await log_action(
+        db=db,
+        action="draft_submit_review",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(draft_id),
+        details={"case_id": str(case_id), "version": updated.draft_version},
+        request=http_request,
+    )
+    return updated
+
+
+@router.post("/cases/{case_id}/drafts/{draft_id}/review", response_model=PlaybookCaseResponse)
+async def review_draft(
+    case_id: UUID,
+    draft_id: UUID,
+    request: DraftReviewRequest,
+    http_request: Request,
+    current_user: User = Depends(require_editor),
+    db: AsyncSession = Depends(get_db_session),
+) -> PlaybookCaseResponse:
+    """Review a submitted draft version."""
+    draft_result = await db.execute(
+        text("SELECT id, status FROM drafts WHERE id = :draft_id AND case_id = :case_id FOR UPDATE"),
+        {"draft_id": draft_id, "case_id": case_id},
+    )
+    draft = draft_result.mappings().first()
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft["status"] not in {"pending_review", "changes_requested"}:
+        raise HTTPException(status_code=409, detail=f"Cannot review draft in status '{draft['status']}'")
+
+    new_draft_status = request.decision
+    new_case_status = request.decision
+    await db.execute(
+        text("UPDATE drafts SET status = :status, updated_at = now() WHERE id = :draft_id"),
+        {"status": new_draft_status, "draft_id": draft_id},
+    )
+    await db.execute(
+        text("UPDATE cases SET status = :status, updated_at = now() WHERE id = :case_id"),
+        {"status": new_case_status, "case_id": case_id},
+    )
+    await db.execute(
+        text(
+            "INSERT INTO draft_reviews (id, draft_id, reviewer, decision, reason, created_at) VALUES (:id, :draft_id, :reviewer, :decision, :reason, now())"
+        ),
+        {
+            "id": uuid4(),
+            "draft_id": draft_id,
+            "reviewer": current_user.email,
+            "decision": request.decision,
+            "reason": request.reason.strip() if request.reason else None,
+        },
+    )
+    await db.commit()
+    updated = await _build_case_response(db, case_id, draft_id)
+    await log_action(
+        db=db,
+        action=f"draft_review_{request.decision}",
+        user_id=current_user.id,
+        resource_type="draft",
+        resource_id=str(draft_id),
+        details={"case_id": str(case_id), "version": updated.draft_version},
+        request=http_request,
+    )
+    return updated
 
 
 @router.post("/cases/{case_id}/revisions", response_model=PlaybookCaseResponse)
