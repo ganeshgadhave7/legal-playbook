@@ -1601,25 +1601,44 @@ function App() {
                 </button>
               </div>
               {showUserForm && (
-                <div className="upload-card user-form">
-                  <label>
-                    Email
-                    <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
-                  </label>
-                  <label>
-                    Password
-                    <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
-                  </label>
-                  <label>
-                    Role
-                    <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as UserResponse["role"])}>
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="user">User</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  </label>
-                  <div className="review-actions">
+                <div className="card user-create-card">
+                  <div className="card-title">
+                    <span className="step-number">+</span>
+                    <div>
+                      <h3>Create new user</h3>
+                      <p>Invite a team member and assign their role.</p>
+                    </div>
+                  </div>
+                  <div className="user-create-grid">
+                    <label>
+                      Email address
+                      <input
+                        type="email"
+                        placeholder="colleague@acme.demo"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Temporary password
+                      <input
+                        type="password"
+                        placeholder="Minimum 8 characters"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Role
+                      <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as UserResponse["role"])}>
+                        <option value="admin">Admin</option>
+                        <option value="editor">Editor</option>
+                        <option value="user">User</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="user-create-actions">
                     <button className="button secondary" onClick={() => setShowUserForm(false)}>
                       Cancel
                     </button>
@@ -1640,7 +1659,7 @@ function App() {
                         }
                       }}
                     >
-                      Create
+                      Create user
                     </button>
                   </div>
                 </div>
