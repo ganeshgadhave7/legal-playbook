@@ -732,12 +732,17 @@ function App() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumb">
-            Playbooks <span>/</span>{" "}
-            {tab === "documents" ? "Source library" : tab === "playbooks" ? "Playbook authoring" : "Run playbook"}
+            {tab === "documents" && <>Workspace <span>/</span> Source library</>}
+            {tab === "playbooks" && <>Workspace <span>/</span> Playbook authoring</>}
+            {tab === "intake" && <>Workspace <span>/</span> Run playbook</>}
+            {tab === "drafts" && <>Workspace <span>/</span> Drafts</>}
+            {tab === "audit" && <>Admin <span>/</span> Audit logs</>}
+            {tab === "users" && <>Admin <span>/</span> Users</>}
           </div>
           <div className="topbar-right">
             {user ? (
               <>
+                <span className={`role-badge ${user.role}`}>{user.role}</span>
                 <span className="avatar">{user.email.slice(0, 1).toUpperCase()}</span>
                 <span>{user.email}</span>
                 <button className="button secondary" onClick={handleLogout} disabled={busy}>
@@ -899,7 +904,11 @@ function App() {
                   <span>ACTION</span>
                 </div>
                 {documents.length === 0 ? (
-                  <div className="empty-row">No source documents yet. Upload a fictional bank policy or vendor evidence file to begin.</div>
+                  <div className="empty-row">
+                    {isEditor
+                      ? "No source documents yet. Upload a fictional bank policy or vendor evidence file to begin."
+                      : "No source documents are available yet. Contact an editor or admin to upload documents."}
+                  </div>
                 ) : (
                   documents.map((doc) => (
                     <div className="table-row" key={doc.id}>
