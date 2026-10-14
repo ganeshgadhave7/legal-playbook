@@ -1400,12 +1400,12 @@ function App() {
                                     Export
                                   </button>
                                 </div>
-                                {isLatest && isUserPlus && display.draft_status !== "pending_review" && display.draft_status !== "approved" && (
+                                                                {isLatest && !isEditor && (display.draft_status === "draft_pending_review" || display.draft_status === "changes_requested") && (
                                   <button className="button primary" onClick={startEditingDraft}>
                                     Edit draft
                                   </button>
                                 )}
-                                {isLatest && isUserPlus && (display.draft_status === "draft_pending_review" || display.draft_status === "changes_requested") && (
+                                {isLatest && !isEditor && (display.draft_status === "draft_pending_review" || display.draft_status === "changes_requested") && (
                                   <button
                                     className="button primary"
                                     onClick={async () => {
@@ -1423,7 +1423,7 @@ function App() {
                                     Submit for review
                                   </button>
                                 )}
-                                {isLatest && isEditor && (display.draft_status === "pending_review" || display.draft_status === "changes_requested") && (
+                                {isLatest && isEditor && display.draft_status === "pending_review" && (
                                   <>
                                     <select
                                       className="review-decision"
