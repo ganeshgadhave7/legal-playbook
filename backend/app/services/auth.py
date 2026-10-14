@@ -91,6 +91,7 @@ def _require_role(*allowed: str):
 require_admin = _require_role("admin")
 require_editor = _require_role("admin", "editor")
 require_user_or_above = _require_role("admin", "editor", "user")
+require_admin_or_user = _require_role("admin", "user")
 
 
 async def create_default_admin(db: AsyncSession) -> User | None:

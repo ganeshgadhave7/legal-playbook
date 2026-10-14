@@ -49,7 +49,7 @@ from app.workflows.playbook_draft import (
     run_playbook_draft,
 )
 from app.workflows.vendor_onboarding import DISCLAIMER, run_vendor_onboarding
-from app.services.auth import require_admin, require_editor, require_user_or_above
+from app.services.auth import require_admin, require_admin_or_user, require_editor, require_user_or_above
 
 router = APIRouter(prefix="/playbooks", tags=["playbooks"], dependencies=[Depends(require_user_or_above)])
 
@@ -363,7 +363,7 @@ async def update_draft_content(
     draft_id: UUID,
     request: DraftContentUpdate,
     http_request: Request,
-    current_user: User = Depends(require_user_or_above),
+    current_user: User = Depends(require_admin_or_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> PlaybookCaseResponse:
     """Update the editable content of a draft."""
