@@ -1655,31 +1655,7 @@ function App() {
                 {users.map((u) => (
                   <div className="table-row user-row" key={u.id}>
                     <span>{u.email}</span>
-                    <span>
-                      {u.id !== user?.id ? (
-                        <select
-                          className="role-select"
-                          value={u.role}
-                          onChange={async (e) => {
-                            try {
-                              await updateUser(u.id, { role: e.target.value as UserResponse["role"] });
-                              setSuccess("Role updated.");
-                              const result = await listUsers();
-                              setUsers(result.items);
-                            } catch (err) {
-                              setError(err instanceof Error ? err.message : "Could not update role.");
-                            }
-                          }}
-                        >
-                          <option value="admin">Admin</option>
-                          <option value="editor">Editor</option>
-                          <option value="user">User</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      ) : (
-                        u.role
-                      )}
-                    </span>
+                    <span>{u.role}</span>
                     <span>
                       <span className={`status-badge ${u.is_active ? "ready" : "failed"}`}>
                         {u.is_active ? "Active" : "Inactive"}
