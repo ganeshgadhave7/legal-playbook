@@ -28,6 +28,8 @@ def upgrade() -> None:
         ),
     )
     op.create_check_constraint("ck_users_role", "users", sa.text(f"role IN {tuple(ROLES)}"))
+    # Promote existing superusers to admin so the default admin keeps full access.
+    op.execute("UPDATE users SET role = 'admin' WHERE is_superuser = true")
 
 
 def downgrade() -> None:
