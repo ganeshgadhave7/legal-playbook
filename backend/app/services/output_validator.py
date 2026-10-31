@@ -46,12 +46,33 @@ def build_fallback_draft(reason: str) -> dict[str, Any]:
     }
 
 
+def _normalize_report(
+    report: CitationVerificationReport | dict[str, Any] | None,
+    model: type,
+) -> CitationVerificationReport | None:
+    if report is None:
+        return None
+    if isinstance(report, model):
+        return report
+    return model(**report)
+
+
 def validate_draft_output(
     content: dict[str, Any],
-    verification_report: CitationVerificationReport,
-    consistency_report: ConsistencyReport,
+    verification_report: CitationVerificationReport | dict[str, Any],
+    consistency_report: ConsistencyReport | dict[str, Any],
 ) -> ValidationResult:
     """Validate a draft against citation, consistency, and structural checks."""
+    verification_report = _normalize_report(verification_report, CitationVerificationReport)
+    consistency_report = _normalize_report(consistency_report, ConsistencyReport)
+
+    if verification_report is None or consistency_report is None:
+        return ValidationResult(
+            status="rejected",
+            reason="Guardrail reports missing",
+            checks=[ValidationCheck(name="reports_available", passed=False, detail="missing reports")],
+        )
+
     settings = get_settings()
     checks: list[ValidationCheck] = []
 

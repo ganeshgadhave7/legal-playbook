@@ -1,4 +1,5 @@
 """FastAPI entry point for the Acme Legal Playbook demo."""
+import logging
 import traceback
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from app.services.audit import log_action
 from app.services.auth import create_default_admin
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -100,6 +102,7 @@ async def audit_request_middleware(request: Request, call_next):
 @app.exception_handler(Exception)
 async def debug_exception_handler(_request: Request, exc: Exception):
     """Return traceback details for unexpected errors (demo debugging only)."""
+    logger.exception("Unhandled exception: %s", exc)
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc), "traceback": traceback.format_exception(type(exc), exc, exc.__traceback__)},

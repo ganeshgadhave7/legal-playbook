@@ -209,7 +209,7 @@ async def verify_citations(state: VendorOnboardingState) -> dict:
     passages = state.get("passages", [])
     db = state["db"]
     updated_content, report = await verify_draft_citations(content, passages, db)
-    return {"draft_content": updated_content, "verification_report": report}
+    return {"draft_content": updated_content, "verification_report": report.model_dump()}
 
 
 def check_consistency(state: VendorOnboardingState) -> dict:
@@ -219,7 +219,7 @@ def check_consistency(state: VendorOnboardingState) -> dict:
     updated_content, report = check_draft_consistency(
         content, answers, "vendor_onboarding", "1"
     )
-    return {"draft_content": updated_content, "consistency_report": report}
+    return {"draft_content": updated_content, "consistency_report": report.model_dump()}
 
 
 def validate_output(state: VendorOnboardingState) -> dict:
@@ -228,19 +228,12 @@ def validate_output(state: VendorOnboardingState) -> dict:
     verification_report = state.get("verification_report")
     consistency_report = state.get("consistency_report")
 
-    if verification_report is None or consistency_report is None:
-        return {
-            "validation_result": ValidationResult(
-                status="accepted", reason="Guardrail reports unavailable", checks=[]
-            )
-        }
-
     result = validate_draft_output(content, verification_report, consistency_report)
     if result.status == "rejected":
         updated_content = build_fallback_draft(result.reason or "Draft validation failed")
-        return {"draft_content": updated_content, "validation_result": result}
+        return {"draft_content": updated_content, "validation_result": result.model_dump()}
 
-    return {"validation_result": result}
+    return {"validation_result": result.model_dump()}
 
 
 async def assemble_draft(state: VendorOnboardingState) -> dict:
@@ -263,15 +256,9 @@ async def assemble_draft(state: VendorOnboardingState) -> dict:
         for row in state.get("passages", [])
     ]
     content = dict(state["draft_content"])
-    content["verification_report"] = (
-        state["verification_report"].model_dump() if state.get("verification_report") else None
-    )
-    content["consistency_report"] = (
-        state["consistency_report"].model_dump() if state.get("consistency_report") else None
-    )
-    content["validation_result"] = (
-        state["validation_result"].model_dump() if state.get("validation_result") else None
-    )
+    content["verification_report"] = state.get("verification_report")
+    content["consistency_report"] = state.get("consistency_report")
+    content["validation_result"] = state.get("validation_result")
     request = state["request"]
     if revision_number == 1:
         case_insert = await db.execute(
