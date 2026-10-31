@@ -195,6 +195,7 @@ def build_draft_content(state: VendorOnboardingState) -> dict:
     """Assemble the structured draft content from the workflow state."""
     return {
         "summary": state.get("vendor_summary", ""),
+        "vendor_summary": state.get("vendor_summary", ""),
         "checklist": state.get("checklist", []),
         "risk_indicators": state.get("risk_indicators", []),
         "missing_information": state.get("missing_information", []),

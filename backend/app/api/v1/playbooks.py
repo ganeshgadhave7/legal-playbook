@@ -44,6 +44,7 @@ from app.schemas.playbook import (
     VerificationReport,
 )
 from app.services.audit import log_action
+from app.services.llm_client import LLMError
 from app.services.usage_budget import UsageBudgetExceeded
 from app.services.voyage_embeddings import EmbeddingError
 from app.workflows.playbook_draft import (
@@ -1313,6 +1314,9 @@ async def draft_vendor_onboarding(
     except EmbeddingError as exc:
         await db.rollback()
         raise HTTPException(status_code=502, detail="Could not embed playbook intake") from exc
+    except LLMError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=502, detail="LLM generation failed; check LLM_API_KEY and provider status") from exc
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Could not prepare vendor onboarding draft") from exc
@@ -1362,6 +1366,9 @@ async def draft_generic_playbook(
     except EmbeddingError as exc:
         await db.rollback()
         raise HTTPException(status_code=502, detail="Could not embed playbook intake") from exc
+    except LLMError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=502, detail="LLM generation failed; check LLM_API_KEY and provider status") from exc
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Could not prepare playbook draft") from exc
