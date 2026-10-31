@@ -17,6 +17,14 @@ from app.services.voyage_embeddings import EmbeddingError, VoyageEmbedder
 
 logger = logging.getLogger(__name__)
 
+# Simple English stopwords for the local keyword fallback verifier.
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "to", "of", "and", "or", "for", "with", "in", "on", "at", "by", "from",
+    "as", "it", "its", "this", "that", "these", "those", "will", "would",
+    "should", "may", "might", "can", "could", "shall", "must", "need", "shall",
+}
+
 
 class ClaimScore(BaseModel):
     """Verification result for a single claim."""
@@ -47,6 +55,61 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+def _tokenize(text: str) -> set[str]:
+    """Return a set of meaningful lowercase tokens from a string."""
+    return {
+        word.strip(".,;:!?()[]{}\"'")
+        for word in text.lower().split()
+        if word.strip(".,;:!?()[]{}\"'") and word.strip(".,;:!?()[]{}\"'") not in _STOPWORDS
+    }
+
+
+def _local_claim_support(claim: str, passages: list[dict[str, Any]]) -> tuple[float, int | None]:
+    """Fallback keyword-overlap verifier when embeddings are unavailable.
+
+    Returns the best overlap ratio and the index of the best matching passage.
+    """
+    claim_words = _tokenize(claim)
+    if not claim_words:
+        return 0.0, None
+
+    best_score = 0.0
+    best_index: int | None = None
+    for idx, passage in enumerate(passages):
+        passage_words = _tokenize(str(passage.get("content", "")))
+        if not passage_words:
+            continue
+        overlap = len(claim_words & passage_words) / len(claim_words)
+        if overlap > best_score:
+            best_score = overlap
+            best_index = idx
+    return best_score, best_index
+
+
+def _score_claims_with_local_fallback(
+    claims: list[str],
+    passages: list[dict[str, Any]],
+    threshold: float,
+) -> tuple[list[ClaimScore], list[str]]:
+    """Score claims using keyword overlap instead of embeddings."""
+    scored: list[ClaimScore] = []
+    unsupported: list[str] = []
+    for claim in claims:
+        score, best_index = _local_claim_support(claim, passages)
+        supported = score >= threshold
+        scored.append(
+            ClaimScore(
+                claim=claim,
+                best_similarity=round(score, 4),
+                supported=supported,
+                best_passage_index=best_index,
+            )
+        )
+        if not supported:
+            unsupported.append(claim)
+    return scored, unsupported
 
 
 def _extract_claims(content: dict[str, Any]) -> list[str]:
@@ -158,24 +221,40 @@ async def verify_draft_citations(
         if db is not None:
             await db.rollback()
         raise
-    except EmbeddingError:
+    except EmbeddingError as embed_exc:
         if db is not None:
             await release_reservation(db, estimated_tokens)
             await db.commit()
-        logger.warning("Citation verifier could not embed claims/passages")
-        report = CitationVerificationReport(
-            status="failed",
-            threshold=threshold,
-            supported_claims=0,
-            unsupported_claims=len(claims),
-            low_confidence_claims=0,
-            claims=[
-                ClaimScore(claim=claim, best_similarity=0.0, supported=False)
-                for claim in claims
-            ],
-            unsupported_details=["Embedding service unavailable; could not verify citations."],
+        logger.warning(
+            "Citation verifier embedding failed (%s); falling back to keyword overlap",
+            embed_exc,
         )
-        updated = _move_unsupported_claims(content, claims)
+        # Use a lower threshold for the keyword fallback.
+        local_threshold = max(0.25, threshold - 0.25)
+        scored_claims, unsupported = _score_claims_with_local_fallback(
+            claims, passages, local_threshold
+        )
+        supported_count = sum(1 for c in scored_claims if c.supported)
+        low_confidence_count = 0
+        status = "verified_with_local_fallback"
+        if unsupported:
+            status = "verified_with_warnings"
+        if not supported_count and unsupported:
+            status = "failed"
+
+        report = CitationVerificationReport(
+            status=status,
+            threshold=local_threshold,
+            supported_claims=supported_count,
+            unsupported_claims=len(unsupported),
+            low_confidence_claims=low_confidence_count,
+            claims=scored_claims,
+            unsupported_details=[
+                f"Embedding service unavailable; using keyword fallback. Unsupported: {u}"
+                for u in unsupported
+            ] or ["Embedding service unavailable; verified using keyword fallback."],
+        )
+        updated = _move_unsupported_claims(content, unsupported)
         return updated, report
 
     claim_vectors = vectors[: len(claims)]
