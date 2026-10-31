@@ -12,7 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.schemas.playbook import GenericDraftResponse, PlaybookSource
+from app.services.citation_verifier import CitationVerificationReport, verify_draft_citations
+from app.services.consistency_checker import ConsistencyReport, check_draft_consistency
 from app.services.llm_client import LLMError, generate_playbook_draft
+from app.services.output_validator import (
+    DraftValidationError,
+    ValidationResult,
+    build_fallback_draft,
+    validate_draft_output,
+)
 from app.services.retrieval_utils import deduplicate_passages
 from app.services.usage_budget import (
     UsageBudgetExceeded,
@@ -41,6 +49,9 @@ class PlaybookDraftState(TypedDict):
     query: NotRequired[str]
     passages: NotRequired[list[dict[str, Any]]]
     draft_content: NotRequired[dict[str, Any]]
+    verification_report: NotRequired[CitationVerificationReport]
+    consistency_report: NotRequired[ConsistencyReport]
+    validation_result: NotRequired[ValidationResult]
     case_id: NotRequired[UUID]
     draft_id: NotRequired[UUID]
     response: NotRequired[GenericDraftResponse]
@@ -212,6 +223,55 @@ async def generate_draft(state: PlaybookDraftState) -> dict:
     return {"draft_content": draft_content}
 
 
+async def verify_citations(state: PlaybookDraftState) -> dict:
+    """Verify that generated claims are grounded in retrieved passages."""
+    content = state["draft_content"]
+    passages = state.get("passages", [])
+    db = state["db"]
+    updated_content, report = await verify_draft_citations(content, passages, db)
+    return {"draft_content": updated_content, "verification_report": report}
+
+
+def check_consistency(state: PlaybookDraftState) -> dict:
+    """Enforce deterministic playbook rules against the draft."""
+    content = state["draft_content"]
+    answers = state["answers"]
+    playbook_key = state["playbook_key"]
+    playbook_version = state["playbook_version"]
+    updated_content, report = check_draft_consistency(
+        content, answers, playbook_key, playbook_version
+    )
+    return {"draft_content": updated_content, "consistency_report": report}
+
+
+def validate_output(state: PlaybookDraftState) -> dict:
+    """Run the final validation gate before persisting the draft."""
+    content = state["draft_content"]
+    verification_report = state.get("verification_report")
+    consistency_report = state.get("consistency_report")
+
+    if verification_report is None or consistency_report is None:
+        # Guardrail nodes were skipped; treat as accepted but log a warning.
+        return {
+            "validation_result": ValidationResult(
+                status="accepted",
+                reason="Guardrail reports unavailable",
+                checks=[],
+            )
+        }
+
+    result = validate_draft_output(content, verification_report, consistency_report)
+    if result.status == "rejected":
+        # Replace the draft with a safe fallback so the user sees something useful.
+        updated_content = build_fallback_draft(result.reason or "Draft validation failed")
+        return {
+            "draft_content": updated_content,
+            "validation_result": result,
+        }
+
+    return {"validation_result": result}
+
+
 async def assemble_draft(state: PlaybookDraftState) -> dict:
     """Persist the case, draft, and citations, then return the response."""
     db = state["db"]
@@ -258,6 +318,15 @@ async def assemble_draft(state: PlaybookDraftState) -> dict:
         ]
     )
     content["full_html"] = full_html
+    content["verification_report"] = (
+        state["verification_report"].model_dump() if state.get("verification_report") else None
+    )
+    content["consistency_report"] = (
+        state["consistency_report"].model_dump() if state.get("consistency_report") else None
+    )
+    content["validation_result"] = (
+        state["validation_result"].model_dump() if state.get("validation_result") else None
+    )
 
     case_insert = await db.execute(
         text(
@@ -329,6 +398,9 @@ async def assemble_draft(state: PlaybookDraftState) -> dict:
         missing_information=content.get("missing_information", []),
         recommended_next_steps=content.get("recommended_next_steps", []),
         sources=sources,
+        verification=state.get("verification_report"),
+        consistency=state.get("consistency_report"),
+        validation=state.get("validation_result"),
     )
     return {"response": response, "case_id": case_id, "draft_id": draft_id}
 
@@ -339,13 +411,19 @@ _builder.add_node("validate_intake", validate_intake)
 _builder.add_node("build_query", build_query)
 _builder.add_node("retrieve_sources", retrieve_sources)
 _builder.add_node("generate_draft", generate_draft)
+_builder.add_node("verify_citations", verify_citations)
+_builder.add_node("check_consistency", check_consistency)
+_builder.add_node("validate_output", validate_output)
 _builder.add_node("assemble_draft", assemble_draft)
 _builder.add_edge(START, "load_playbook")
 _builder.add_edge("load_playbook", "validate_intake")
 _builder.add_edge("validate_intake", "build_query")
 _builder.add_edge("build_query", "retrieve_sources")
 _builder.add_edge("retrieve_sources", "generate_draft")
-_builder.add_edge("generate_draft", "assemble_draft")
+_builder.add_edge("generate_draft", "verify_citations")
+_builder.add_edge("verify_citations", "check_consistency")
+_builder.add_edge("check_consistency", "validate_output")
+_builder.add_edge("validate_output", "assemble_draft")
 _builder.add_edge("assemble_draft", END)
 playbook_draft_graph = _builder.compile()
 

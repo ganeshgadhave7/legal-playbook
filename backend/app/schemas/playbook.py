@@ -27,6 +27,58 @@ class PlaybookSource(BaseModel):
     similarity: float
 
 
+class ClaimScore(BaseModel):
+    claim: str
+    best_similarity: float
+    supported: bool
+    best_passage_index: int | None = None
+
+
+class VerificationReport(BaseModel):
+    status: str
+    threshold: float
+    supported_claims: int
+    unsupported_claims: int
+    low_confidence_claims: int
+    claims: list[ClaimScore]
+    unsupported_details: list[str]
+
+
+class RuleCheck(BaseModel):
+    rule_key: str
+    condition_fired: bool
+    action_present: bool
+    action_injected: bool
+    message: str
+
+
+class RuleViolation(BaseModel):
+    rule_key: str
+    condition_label: str
+    expected_action: str
+    field: str
+
+
+class ConsistencyReport(BaseModel):
+    status: str
+    rules_checked: int
+    checks: list[RuleCheck]
+    violations: list[RuleViolation]
+    injected_actions: list[str]
+
+
+class ValidationCheck(BaseModel):
+    name: str
+    passed: bool
+    detail: str | None = None
+
+
+class ValidationResult(BaseModel):
+    status: str
+    reason: str | None
+    checks: list[ValidationCheck]
+
+
 class VendorOnboardingCaseResponse(BaseModel):
     case_id: str
     draft_id: str
@@ -41,6 +93,9 @@ class VendorOnboardingCaseResponse(BaseModel):
     missing_information: list[str]
     recommended_next_steps: list[str]
     sources: list[PlaybookSource]
+    verification: VerificationReport | None = None
+    consistency: ConsistencyReport | None = None
+    validation: ValidationResult | None = None
 
 
 class VendorOnboardingCaseListItem(BaseModel):
@@ -186,6 +241,9 @@ class GenericDraftResponse(BaseModel):
     missing_information: list[str]
     recommended_next_steps: list[str]
     sources: list[PlaybookSource]
+    verification: VerificationReport | None = None
+    consistency: ConsistencyReport | None = None
+    validation: ValidationResult | None = None
 
 
 class PlaybookCaseListItem(BaseModel):
@@ -225,6 +283,9 @@ class PlaybookCaseResponse(BaseModel):
     full_html: str
     review_feedback: str | None = None
     sources: list[PlaybookSource]
+    verification: VerificationReport | None = None
+    consistency: ConsistencyReport | None = None
+    validation: ValidationResult | None = None
 
 
 class GenericRevisionRequest(BaseModel):

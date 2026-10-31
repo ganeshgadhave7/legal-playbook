@@ -14,7 +14,10 @@ from app.schemas.playbook import (
     VendorOnboardingCaseResponse,
     VendorOnboardingRequest,
 )
+from app.services.citation_verifier import CitationVerificationReport, verify_draft_citations
+from app.services.consistency_checker import ConsistencyReport, check_draft_consistency
 from app.services.llm_client import DraftContentOutput, LLMError, generate_vendor_onboarding_draft
+from app.services.output_validator import ValidationResult, build_fallback_draft, validate_draft_output
 from app.services.retrieval_utils import deduplicate_passages
 from app.services.usage_budget import (
     UsageBudgetExceeded,
@@ -41,11 +44,15 @@ class VendorOnboardingState(TypedDict):
     case_id: NotRequired[UUID]
     query_vector: NotRequired[list[float]]
     passages: NotRequired[list[dict]]
+    draft_content: NotRequired[dict]
     vendor_summary: NotRequired[str]
     checklist: NotRequired[list[str]]
     risk_indicators: NotRequired[list[str]]
     missing_information: NotRequired[list[str]]
     recommended_next_steps: NotRequired[list[str]]
+    verification_report: NotRequired[CitationVerificationReport]
+    consistency_report: NotRequired[ConsistencyReport]
+    validation_result: NotRequired[ValidationResult]
     response: NotRequired[VendorOnboardingCaseResponse]
     draft_id: NotRequired[UUID]
 
@@ -184,6 +191,57 @@ async def assess_evidence_and_risks(state: VendorOnboardingState) -> dict:
     }
 
 
+def build_draft_content(state: VendorOnboardingState) -> dict:
+    """Assemble the structured draft content from the workflow state."""
+    return {
+        "summary": state.get("vendor_summary", ""),
+        "checklist": state.get("checklist", []),
+        "risk_indicators": state.get("risk_indicators", []),
+        "missing_information": state.get("missing_information", []),
+        "recommended_next_steps": state.get("recommended_next_steps", []),
+    }
+
+
+async def verify_citations(state: VendorOnboardingState) -> dict:
+    """Verify that generated claims are grounded in retrieved passages."""
+    content = state["draft_content"]
+    passages = state.get("passages", [])
+    db = state["db"]
+    updated_content, report = await verify_draft_citations(content, passages, db)
+    return {"draft_content": updated_content, "verification_report": report}
+
+
+def check_consistency(state: VendorOnboardingState) -> dict:
+    """Enforce deterministic vendor onboarding rules against the draft."""
+    content = state["draft_content"]
+    answers = state["request"].model_dump()
+    updated_content, report = check_draft_consistency(
+        content, answers, "vendor_onboarding", "1"
+    )
+    return {"draft_content": updated_content, "consistency_report": report}
+
+
+def validate_output(state: VendorOnboardingState) -> dict:
+    """Run the final validation gate before persisting the draft."""
+    content = state["draft_content"]
+    verification_report = state.get("verification_report")
+    consistency_report = state.get("consistency_report")
+
+    if verification_report is None or consistency_report is None:
+        return {
+            "validation_result": ValidationResult(
+                status="accepted", reason="Guardrail reports unavailable", checks=[]
+            )
+        }
+
+    result = validate_draft_output(content, verification_report, consistency_report)
+    if result.status == "rejected":
+        updated_content = build_fallback_draft(result.reason or "Draft validation failed")
+        return {"draft_content": updated_content, "validation_result": result}
+
+    return {"validation_result": result}
+
+
 async def assemble_draft(state: VendorOnboardingState) -> dict:
     """Persist a pending-review draft and its citations, then form the response."""
     db = state["db"]
@@ -203,13 +261,16 @@ async def assemble_draft(state: VendorOnboardingState) -> dict:
         )
         for row in state.get("passages", [])
     ]
-    content = {
-        "vendor_summary": state["vendor_summary"],
-        "checklist": state["checklist"],
-        "risk_indicators": state["risk_indicators"],
-        "missing_information": state["missing_information"],
-        "recommended_next_steps": state["recommended_next_steps"],
-    }
+    content = dict(state["draft_content"])
+    content["verification_report"] = (
+        state["verification_report"].model_dump() if state.get("verification_report") else None
+    )
+    content["consistency_report"] = (
+        state["consistency_report"].model_dump() if state.get("consistency_report") else None
+    )
+    content["validation_result"] = (
+        state["validation_result"].model_dump() if state.get("validation_result") else None
+    )
     request = state["request"]
     if revision_number == 1:
         case_insert = await db.execute(
@@ -266,12 +327,15 @@ async def assemble_draft(state: VendorOnboardingState) -> dict:
         draft_status="pending_review",
         created_at=created_at,
         disclaimer=DISCLAIMER,
-        vendor_summary=state["vendor_summary"],
-        checklist=state["checklist"],
-        risk_indicators=state["risk_indicators"],
-        missing_information=state["missing_information"],
-        recommended_next_steps=state["recommended_next_steps"],
+        vendor_summary=content.get("vendor_summary", ""),
+        checklist=content.get("checklist", []),
+        risk_indicators=content.get("risk_indicators", []),
+        missing_information=content.get("missing_information", []),
+        recommended_next_steps=content.get("recommended_next_steps", []),
         sources=sources,
+        verification=state.get("verification_report"),
+        consistency=state.get("consistency_report"),
+        validation=state.get("validation_result"),
     )
     return {"response": response, "case_id": case_id, "draft_id": draft_id}
 
@@ -280,11 +344,19 @@ _builder = StateGraph(VendorOnboardingState)
 _builder.add_node("validate_intake", validate_intake)
 _builder.add_node("retrieve_sources", retrieve_sources)
 _builder.add_node("assess_evidence_and_risks", assess_evidence_and_risks)
+_builder.add_node("build_draft_content", build_draft_content)
+_builder.add_node("verify_citations", verify_citations)
+_builder.add_node("check_consistency", check_consistency)
+_builder.add_node("validate_output", validate_output)
 _builder.add_node("assemble_draft", assemble_draft)
 _builder.add_edge(START, "validate_intake")
 _builder.add_edge("validate_intake", "retrieve_sources")
 _builder.add_edge("retrieve_sources", "assess_evidence_and_risks")
-_builder.add_edge("assess_evidence_and_risks", "assemble_draft")
+_builder.add_edge("assess_evidence_and_risks", "build_draft_content")
+_builder.add_edge("build_draft_content", "verify_citations")
+_builder.add_edge("verify_citations", "check_consistency")
+_builder.add_edge("check_consistency", "validate_output")
+_builder.add_edge("validate_output", "assemble_draft")
 _builder.add_edge("assemble_draft", END)
 vendor_onboarding_graph = _builder.compile()
 

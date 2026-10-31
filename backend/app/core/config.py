@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     voyage_token_budget: int = 180_000_000
     voyage_tokens_used: int = 0
 
+    # Citation verification / guardrails
+    citation_similarity_threshold: float = 0.72
+    strict_citation_mode: bool = False
+
     # Authentication (override in production)
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 60

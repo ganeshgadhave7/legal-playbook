@@ -66,6 +66,58 @@ export type PlaybookSource = {
   similarity: number;
 };
 
+export type ClaimScore = {
+  claim: string;
+  best_similarity: number;
+  supported: boolean;
+  best_passage_index: number | null;
+};
+
+export type VerificationReport = {
+  status: string;
+  threshold: number;
+  supported_claims: number;
+  unsupported_claims: number;
+  low_confidence_claims: number;
+  claims: ClaimScore[];
+  unsupported_details: string[];
+};
+
+export type RuleCheck = {
+  rule_key: string;
+  condition_fired: boolean;
+  action_present: boolean;
+  action_injected: boolean;
+  message: string;
+};
+
+export type RuleViolation = {
+  rule_key: string;
+  condition_label: string;
+  expected_action: string;
+  field: string;
+};
+
+export type ConsistencyReport = {
+  status: string;
+  rules_checked: number;
+  checks: RuleCheck[];
+  violations: RuleViolation[];
+  injected_actions: string[];
+};
+
+export type ValidationCheck = {
+  name: string;
+  passed: boolean;
+  detail: string | null;
+};
+
+export type ValidationResult = {
+  status: string;
+  reason: string | null;
+  checks: ValidationCheck[];
+};
+
 export type GenericDraft = {
   case_id: string;
   draft_id: string;
@@ -82,6 +134,9 @@ export type GenericDraft = {
   recommended_next_steps: string[];
   sources: PlaybookSource[];
   review_feedback?: string | null;
+  verification?: VerificationReport | null;
+  consistency?: ConsistencyReport | null;
+  validation?: ValidationResult | null;
 };
 
 export type VendorOnboardingRequest = { vendor_name: string; service_description: string; annual_spend_usd: number; handles_personal_data: boolean; requires_system_access: boolean; uses_subcontractors: boolean; business_criticality: "low" | "medium" | "high" | "critical" };
@@ -193,6 +248,9 @@ export type PlaybookCase = {
   full_html: string;
   review_feedback: string | null;
   sources: PlaybookSource[];
+  verification?: VerificationReport | null;
+  consistency?: ConsistencyReport | null;
+  validation?: ValidationResult | null;
 };
 
 export type PlaybookCaseList = { items: Array<{ case_id: string; draft_id: string; draft_version: number; playbook_key: string; playbook_version: string; playbook_title: string; case_status: string; draft_status: string; created_at: string }>; total: number };

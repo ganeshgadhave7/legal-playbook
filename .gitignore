@@ -33,3 +33,4 @@ backend/storage/
 Thumbs.db
 .vscode/
 .idea/
+*.tsbuildinfo

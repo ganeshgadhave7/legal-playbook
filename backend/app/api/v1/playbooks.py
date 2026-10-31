@@ -18,6 +18,7 @@ from xhtml2pdf import pisa
 from app.db.session import get_db_session
 from app.models.user import User
 from app.schemas.playbook import (
+    ConsistencyReport,
     DraftContentUpdate,
     DraftReviewRequest,
     DraftSubmitRequest,
@@ -32,6 +33,7 @@ from app.schemas.playbook import (
     PlaybookResponse,
     PlaybookSource,
     PlaybookUpdateRequest,
+    ValidationResult,
     VendorOnboardingCaseListItem,
     VendorOnboardingCaseListResponse,
     DraftReviewRequest,
@@ -39,6 +41,7 @@ from app.schemas.playbook import (
     DraftRevisionRequest,
     VendorOnboardingCaseResponse,
     VendorOnboardingRequest,
+    VerificationReport,
 )
 from app.services.audit import log_action
 from app.services.usage_budget import UsageBudgetExceeded
@@ -260,6 +263,14 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
     risk_indicators = _to_html(content.get("risk_indicators"))
     missing_information = _to_html(content.get("missing_information"))
     recommended_next_steps = _to_html(content.get("recommended_next_steps"))
+
+    verification = content.get("verification_report")
+    consistency = content.get("consistency_report")
+    validation = content.get("validation_result")
+    verification_report = VerificationReport(**verification) if verification else None
+    consistency_report = ConsistencyReport(**consistency) if consistency else None
+    validation_result = ValidationResult(**validation) if validation else None
+
     full_html = content.get("full_html") or "\n\n".join(
         [
             f"<h2>Draft Assessment</h2>\n<p>{html.escape(summary)}</p>",
@@ -289,6 +300,9 @@ async def _build_case_response(db: AsyncSession, case_id: UUID, draft_id: UUID |
         full_html=full_html,
         review_feedback=review_feedback,
         sources=sources,
+        verification=verification_report,
+        consistency=consistency_report,
+        validation=validation_result,
     )
 
 
@@ -1253,13 +1267,21 @@ async def draft_vendor_onboarding(
     """Run the generic playbook workflow for the legacy vendor onboarding playbook."""
     try:
         generic = await run_playbook_draft("vendor_onboarding", "1", request.model_dump(), db)
+        validation_status = generic.validation.status if generic.validation else "unknown"
         await log_action(
             db=db,
-            action="playbook_run",
+            action=f"playbook_run_{validation_status}",
             user_id=current_user.id,
             resource_type="playbook",
             resource_id="vendor_onboarding:1",
-            details={"case_id": generic.case_id, "draft_id": generic.draft_id, "vendor_name": request.vendor_name},
+            details={
+                "case_id": generic.case_id,
+                "draft_id": generic.draft_id,
+                "vendor_name": request.vendor_name,
+                "verification_status": generic.verification.status if generic.verification else None,
+                "consistency_status": generic.consistency.status if generic.consistency else None,
+                "validation_status": validation_status,
+            },
             request=http_request,
         )
         return VendorOnboardingCaseResponse(
@@ -1275,6 +1297,9 @@ async def draft_vendor_onboarding(
             missing_information=generic.missing_information,
             recommended_next_steps=generic.recommended_next_steps,
             sources=generic.sources,
+            verification=generic.verification,
+            consistency=generic.consistency,
+            validation=generic.validation,
         )
     except PlaybookNotFound as exc:
         await db.rollback()
@@ -1308,13 +1333,20 @@ async def draft_generic_playbook(
             request.answers,
             db,
         )
+        validation_status = result.validation.status if result.validation else "unknown"
         await log_action(
             db=db,
-            action="playbook_run",
+            action=f"playbook_run_{validation_status}",
             user_id=current_user.id,
             resource_type="playbook",
             resource_id=f"{request.playbook_key}:{request.playbook_version}",
-            details={"case_id": result.case_id, "draft_id": result.draft_id},
+            details={
+                "case_id": result.case_id,
+                "draft_id": result.draft_id,
+                "verification_status": result.verification.status if result.verification else None,
+                "consistency_status": result.consistency.status if result.consistency else None,
+                "validation_status": validation_status,
+            },
             request=http_request,
         )
         return result

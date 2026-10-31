@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { VerificationPanel } from "../components/VerificationPanel";
 import {
   checkHealth,
   createGenericDraft,
@@ -1311,6 +1312,11 @@ function App() {
                             </div>
                           ))}
                         </div>
+                        <VerificationPanel
+                          verification={draft.verification}
+                          consistency={draft.consistency}
+                          validation={draft.validation}
+                        />
                       </div>
                     )}
                   </div>
@@ -1551,6 +1557,11 @@ function App() {
                               </div>
                             ))}
                           </div>
+                          <VerificationPanel
+                            verification={display.verification}
+                            consistency={display.consistency}
+                            validation={display.validation}
+                          />
                         </div>
                       );
                     })()

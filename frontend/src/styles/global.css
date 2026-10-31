@@ -11,6 +11,31 @@
 .review-feedback{background:#fff8e9;border:1px solid #f1e6cd;border-radius:6px;padding:12px 14px;margin:14px 0}.review-feedback strong{display:block;font-size:10px;color:#805e2e;margin-bottom:5px}.review-feedback p{margin:0;font-size:11px;color:#6b5329;line-height:1.5}.review-decision{border:1px solid #e2e8e2;border-radius:6px;background:#fcfdfc;padding:8px 10px;font-size:10px;font-weight:600;color:#344138;outline:none;cursor:pointer}.review-reason{border:1px solid #e2e8e2;border-radius:6px;background:#fcfdfc;padding:8px 10px;font-size:10px;color:#344138;outline:none;min-width:180px}.role-select{border:1px solid #e2e8e2;border-radius:6px;background:#fcfdfc;padding:5px 8px;font-size:10px;color:#344138;outline:none;cursor:pointer}
 .status-badge.draft{background:#eef4ff;color:#4a6391}.status-badge.published{background:#e8f3e9;color:#41764c}.status-badge.archived{background:#f0f0f0;color:#7c867f}
 
+/* Verification panel */
+.verification-panel{background:#fbfdfb;border:1px solid #e3ebe2;border-radius:8px;padding:16px;margin-top:12px}
+.verification-panel h3{font:700 11px Manrope;margin:0 0 12px;color:#3f6248}
+.verification-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.verification-label{font-size:10px;color:#6d786f}
+.verification-reason{font-size:10px;color:#805e2e;margin:6px 0 0;width:100%;line-height:1.5}
+.verification-block{border-top:1px solid #e8ece8;padding-top:12px;margin-top:12px}
+.verification-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.verification-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:#536056;margin-bottom:10px}
+.verification-issues{margin:0;padding-left:18px;font-size:10px;color:#963e3a}
+.verification-issues li{padding:3px 0}
+.verification-injected{background:#eaf4eb;border:1px solid #dcebdd;border-radius:6px;padding:10px 12px;margin-bottom:10px}
+.verification-injected strong{font-size:10px;color:#3f6248;display:block;margin-bottom:5px}
+.verification-injected ul{margin:0;padding-left:16px;font-size:10px;color:#46534a}
+.verification-injected li{padding:2px 0}
+.verification-details summary{font-size:10px;font-weight:700;color:#536056;cursor:pointer;margin-bottom:6px}
+.verification-claims{margin:0;padding-left:0;list-style:none;font-size:10px}
+.verification-claims li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:start;padding:6px 8px;border-bottom:1px solid #f0f2ef}
+.verification-claims li:last-child{border-bottom:0}
+.verification-claims li.supported{background:#f4f9f5}
+.verification-claims li.unsupported{background:#fdf5f4}
+.verification-claims li.fired{background:#fff8e9}
+.claim-text{color:#46534a;line-height:1.45}
+.claim-score{font-weight:700;color:#6b9e78;white-space:nowrap}
+
 .upload-metadata-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}.upload-title-field{grid-column:1/-1}.upload-metadata-grid>label:not(.check-row){display:flex;min-width:0;flex-direction:column;gap:6px;color:#536056;font-size:10px;font-weight:700}.upload-metadata-grid input:not([type=checkbox]){width:100%;min-width:0;border:1px solid #e2e8e2;border-radius:6px;background:#fcfdfc;padding:10px 11px;color:#344138;font-size:11px;font-weight:400;outline:none}.upload-metadata-grid input:focus{border-color:#8eae91;box-shadow:0 0 0 3px #eaf2eb}.upload-fictional-field{align-items:center;margin:0;padding:8px 0}.upload-fictional-field b,.upload-fictional-field small{display:block}.upload-fictional-field b{font-size:10px;color:#536056}.upload-fictional-field small{font-size:9px;color:#939d95;margin-top:3px}
 
 .login-shell{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f7f4;padding:20px}.login-card{width:100%;max-width:380px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:32px;text-align:center}.login-card h1{font:700 22px Manrope;margin:0;letter-spacing:-.5px}.login-card>p{color:#6d7d70;font-size:12px;margin:10px 0 24px;line-height:1.5}.login-card form{display:flex;flex-direction:column;gap:16px;text-align:left}.login-card label{font-size:10px;font-weight:700;color:#536056;display:flex;flex-direction:column;gap:6px}.login-card input{width:100%;border:1px solid #e2e8e2;border-radius:6px;background:#fcfdfc;padding:11px;font-size:14px;color:#344138;outline:none}.login-card input:focus{border-color:#8eae91;box-shadow:0 0 0 3px #eaf2eb}.login-card .toast{margin:0}.login-hint{margin-top:20px;font-size:10px;color:#8a958d;line-height:1.5}
